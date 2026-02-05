@@ -1,84 +1,80 @@
 import gradio as gr
-import requests
 import os
+import torch
+from huggingface_hub import InferenceClient
+from datasets import load_dataset
 
-API_TOKEN = os.getenv("HF_TOKEN")
-WHISPER_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
-TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/facebook/mbart-large-50-many-to-many-mmt"
-# Switching to Kokoro: The most stable serverless TTS model in 2026
-TTS_URL = "https://router.huggingface.co/hf-inference/models/hexgrad/Kokoro-82M"
+# Initialize the 2026-standard Inference Client
+# This handles the router logic automatically
+client = InferenceClient(token=os.getenv("HF_TOKEN"))
+
+# Models we know are currently pinned and high-availability
+STT_MODEL = "openai/whisper-large-v3-turbo"
+TRANSLATE_MODEL = "facebook/mbart-large-50-many-to-many-mmt"
+TTS_MODEL = "microsoft/speecht5_tts"
+
+# Speaker embeddings are required for SpeechT5 to define the 'voice'
+# We'll pull a standard one from the official dataset
+embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
 
 LANG_DATA = {
-    "English": {"mbart": "en_XX", "kokoro": "en-us"},
-    "Spanish": {"mbart": "es_XX", "kokoro": "es"},
-    "French": {"mbart": "fr_XX", "kokoro": "fr-fr"},
-    "Japanese": {"mbart": "ja_XX", "kokoro": "ja"},
-    "Chinese": {"mbart": "zh_CN", "kokoro": "zh"}
+    "English": "en_XX", "Spanish": "es_XX", "French": "fr_XX", 
+    "German": "de_DE", "Japanese": "ja_XX", "Chinese": "zh_CN"
 }
 
-headers = {"Authorization": f"Bearer {API_TOKEN}"}
-
-def text_to_speech(text, language):
-    if not text: return None
-    
-    # Kokoro uses the 'voice' parameter to determine language
-    payload = {
-        "inputs": text,
-        "parameters": {"voice": LANG_DATA[language]["kokoro"]}
-    }
-    
-    print(f"--- Requesting Kokoro TTS for {language} ---")
-    response = requests.post(TTS_URL, headers=headers, json=payload)
-    
-    if response.status_code == 200:
-        out_path = "output.wav"
-        with open(out_path, "wb") as f:
-            f.write(response.content)
-        return out_path
-    
-    print(f"TTS Failed ({response.status_code}): {response.text[:100]}")
-    return None
-
-def translate_speech(audio_path, input_lang, target_lang):
+def translate_and_speak(audio_path, in_lang, out_lang):
     if not audio_path: return "", "", None
     
-    # 1. Transcribe
+    # 1. Faster Transcription using InferenceClient
     with open(audio_path, "rb") as f:
-        asr_res = requests.post(WHISPER_URL, headers=headers, data=f.read())
-    transcript = asr_res.json().get("text", "Error")
+        audio_data = f.read()
+    
+    # Client.automatic_speech_recognition is the 2026 preferred method
+    transcript = client.automatic_speech_recognition(audio_data, model=STT_MODEL).text
 
-    # 2. Translate
-    tr_payload = {
+    # 2. Translation
+    payload = {
         "inputs": transcript,
-        "parameters": {
-            "src_lang": LANG_DATA[input_lang]["mbart"],
-            "tgt_lang": LANG_DATA[target_lang]["mbart"]
-        }
+        "parameters": {"src_lang": LANG_DATA[in_lang], "tgt_lang": LANG_DATA[out_lang]}
     }
-    tr_res = requests.post(TRANSLATE_URL, headers=headers, json=tr_payload)
-    translation = tr_res.json()[0].get("translation_text", "")
+    # Direct post for MBART as it's a specific translation task
+    res_tr = client.post(json=payload, model=TRANSLATE_MODEL)
+    import json
+    translation = json.loads(res_tr.decode())[0]['translation_text']
 
-    # 3. TTS
-    audio_out = text_to_speech(translation, target_lang)
-    return transcript, translation, audio_out
+    # 3. Stable TTS (SpeechT5)
+    # This model is a 'pinned' service and rarely returns 404
+    audio_output = client.text_to_speech(translation, model=TTS_MODEL)
+    
+    out_path = "output.wav"
+    with open(out_path, "wb") as f:
+        f.write(audio_output)
+        
+    return transcript, translation, out_path
 
+# --- UI Layout ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🔊 VOXTRAL v3: High-Reliability Translator")
+    gr.Markdown("# 🌎 Universal Voxtral v4")
     
     with gr.Row():
         audio_in = gr.Audio(sources="microphone", type="filepath", label="Voice Input")
         with gr.Column():
-            in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="Speak In")
-            out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="Translate To")
+            in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="Input Language")
+            out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="Target Language")
     
     with gr.Row():
-        txt_out = gr.Textbox(label="Original")
+        txt_out = gr.Textbox(label="Transcription")
         trn_out = gr.Textbox(label="Translation")
     
     audio_out = gr.Audio(label="Voice Output", autoplay=True)
-    speak_btn = gr.Button("🔊 Read Again", variant="secondary")
+    
+    # The action trigger
+    audio_in.stop_recording(
+        translate_and_speak, 
+        inputs=[audio_in, in_lang, out_lang], 
+        outputs=[txt_out, trn_out, audio_out]
+    )
 
-    audio_in.stop_recording(translate_speech, [audio_in, in_lang, out_lang], [txt_out, trn_out, audio_out])
-    speak_btn.click(text_to_speech, [trn_out, out_lang], audio_out)
-
-demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
+if __name__ == "__main__":
+    demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
