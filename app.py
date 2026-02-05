@@ -1,60 +1,61 @@
 import gradio as gr
-from huggingface_hub import InferenceClient
+import requests
 import os
 import sys
 
-# Force output to logs
+# Ensure logs show up immediately
 sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
 
-# Initialize Client
-client = InferenceClient(token=os.getenv("HF_TOKEN"))
+# We'll use direct requests to the API for maximum stability
+API_TOKEN = os.getenv("HF_TOKEN")
+WHISPER_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
+TRANSLATE_URL = "https://api-inference.huggingface.co/models/Helsinki-NLP/opus-mt-en-fr"
 
-def translate_speech(audio_path):
+headers = {"Authorization": f"Bearer {API_TOKEN}"}
+
+def query_api(url, data=None, is_audio=False):
+    if is_audio:
+        with open(data, "rb") as f:
+            response = requests.post(url, headers=headers, data=f)
+    else:
+        response = requests.post(url, headers=headers, json={"inputs": data})
+    return response.json()
+
+def process_all(audio_path):
     if not audio_path:
-        return "No audio recorded.", ""
-    
+        return "No audio", ""
+
     try:
-        print(f"Processing audio from: {audio_path}")
-        
-        # 1. Transcription (Whisper)
-        asr_result = client.automatic_speech_recognition(
-            audio_path, 
-            model="openai/whisper-large-v3-turbo"
-        )
-        transcript = asr_result.text
+        # 1. Transcribe
+        print("Starting Transcription...")
+        asr_json = query_api(WHISPER_URL, data=audio_path, is_audio=True)
+        # Handle cases where API returns an error message instead of text
+        transcript = asr_json.get("text", str(asr_json))
         print(f"Transcript: {transcript}")
 
-        # 2. Translation (Helsinki-NLP is more stable on free API than NLLB)
-        # It automatically handles English to French
-        translation_result = client.translation(
-            transcript,
-            model="Helsinki-NLP/opus-mt-en-fr"
-        )
-        translated_text = translation_result.translation_text
-        print(f"Translation: {translated_text}")
+        # 2. Translate
+        print("Starting Translation...")
+        trans_json = query_api(TRANSLATE_URL, data=transcript)
+        # Standard Helsinki-NLP return format is a list of dicts
+        if isinstance(trans_json, list) and len(trans_json) > 0:
+            translation = trans_json[0].get("translation_text", "Translation Error")
+        else:
+            translation = f"API error: {trans_json}"
         
-        return transcript, translated_text
+        return transcript, translation
 
     except Exception as e:
-        # If it's a 'NoneType' or empty error, we catch it here
-        error_msg = str(e) if str(e) else "Unknown API Error (Empty response)"
-        print(f"DETAILED ERROR: {error_msg}")
-        return f"Error: {error_msg}", ""
+        return f"System Error: {str(e)}", ""
 
-# Gradio 6.0 UI
-with gr.Blocks() as demo:
-    gr.Markdown("## 🎙️ Speech-to-French Prototype")
-    
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# 🌍 Speech-to-French Translator")
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Record")
+        audio_in = gr.Audio(sources="microphone", type="filepath")
+    with gr.Row():
+        txt_out = gr.Textbox(label="Transcription")
+        trn_out = gr.Textbox(label="French Translation")
     
-    with gr.Column():
-        out_transcription = gr.Textbox(label="Transcription (English)")
-        out_translation = gr.Textbox(label="Translation (French)")
-    
-    # Triggering on 'change' or 'stop_recording'
-    audio_in.stop_recording(translate_speech, inputs=audio_in, outputs=[out_transcription, out_translation])
+    audio_in.stop_recording(process_all, inputs=audio_in, outputs=[txt_out, trn_out])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860)
