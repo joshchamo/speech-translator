@@ -2,25 +2,23 @@ import gradio as gr
 from huggingface_hub import InferenceClient
 import os
 
-# 1. Initialize the client. 
-# Make sure you have added HF_TOKEN to your Space's 'Settings > Secrets'
+# The 'token' parameter pulls the secret you set in the Space Settings
+# If HF_TOKEN is missing, this will fail with the 401 error you saw.
 client = InferenceClient(token=os.getenv("HF_TOKEN"))
 
 def process_audio(audio_path):
-    # Guard clause: stop if no audio is received
     if audio_path is None:
-        return "Please record some audio first.", ""
+        return "Please record audio.", ""
         
     try:
-        # A. Transcription: Using Whisper Large v3 Turbo (highly reliable on Serverless API)
+        # 1. ASR - Using a model guaranteed to be on the serverless fleet
         transcription_result = client.automatic_speech_recognition(
             audio_path, 
             model="openai/whisper-large-v3-turbo"
         )
         transcript = transcription_result.text
         
-        # B. Translation: Using NLLB-200
-        # NLLB requires 'eng_Latn' (English) and 'fra_Latn' (French) codes
+        # 2. Translation
         translation_result = client.translation(
             transcript,
             model="facebook/nllb-200-distilled-600M",
@@ -31,27 +29,25 @@ def process_audio(audio_path):
         return transcript, translation
         
     except Exception as e:
-        # This will show the actual error message in the UI if it fails again
-        return f"ASR Error: {str(e)}", f"Translation Error: {str(e)}"
+        # Detailed error reporting helps debugging
+        return f"Error: {str(e)}", ""
 
-# 2. Build a clean UI
-with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🎙️ Fast Speech-to-French Translator")
-    gr.Markdown("Click the microphone, speak, and then click 'Stop' or wait for processing.")
+# UI Design
+with gr.Blocks() as demo:
+    gr.Markdown("# 🎙️ Real-time Translation Prototype")
     
     with gr.Row():
-        # type='filepath' is essential for sending data to the API correctly
-        audio_input = gr.Audio(sources=["microphone"], type="filepath")
+        audio_input = gr.Audio(sources="microphone", type="filepath")
     
-    with gr.Column():
-        text_output = gr.Textbox(label="1. Transcription (English)", placeholder="Waiting for speech...")
-        translation_output = gr.Textbox(label="2. Translation (French)", placeholder="Translation will appear here...")
-
-    # We use 'stop_recording' as the trigger to keep things simple
+    with gr.Row():
+        text_output = gr.Textbox(label="Transcription (English)")
+        translation_output = gr.Textbox(label="Translation (French)")
+    
     audio_input.stop_recording(
         fn=process_audio, 
         inputs=audio_input, 
         outputs=[text_output, translation_output]
     )
 
-demo.launch()
+# FIX: In Gradio 6.0, the theme must be passed here, not in gr.Blocks()
+demo.launch(theme=gr.themes.Soft())
