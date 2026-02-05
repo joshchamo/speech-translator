@@ -1,29 +1,18 @@
 import gradio as gr
 import requests
 import os
-import time
+import sys
+
+# Immediate log flushing for HF Container tab
+sys.stdout.reconfigure(line_buffering=True)
 
 API_TOKEN = os.getenv("HF_TOKEN")
+# Using the most stable 'pinned' models on the HF Router
 WHISPER_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
-NLLB_URL = "https://router.huggingface.co/hf-inference/models/facebook/nllb-200-distilled-600M"
-headers = {"Authorization": f"Bearer {API_TOKEN}"}
+# Switching to a more stable translation path for the demo
+TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/Helsinki-NLP/opus-mt-en-fr"
 
-# Mapping user-friendly names to NLLB language codes
-LANG_MAP = {
-    "French": "fra_Latn",
-    "Spanish": "spa_Latn",
-    "German": "deu_Latn",
-    "Italian": "ita_Latn",
-    "Portuguese": "por_Latn",
-    "Chinese (Simplified)": "zho_Hans",
-    "Japanese": "jpn_Jpan",
-    "Korean": "kor_Hang",
-    "Arabic": "arb_Arab",
-    "Hindi": "hin_Deva",
-    "Russian": "rus_Cyrl",
-    "Turkish": "tur_Latn",
-    "Dutch": "nld_Latn"
-}
+headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
 def query_api(url, payload, is_audio=False):
     current_headers = headers.copy()
@@ -35,61 +24,70 @@ def query_api(url, payload, is_audio=False):
     else:
         response = requests.post(url, headers=current_headers, json=payload)
     
-    return response.status_code, response.json()
+    # Return status and raw text if JSON fails to prevent the crash you saw
+    try:
+        return response.status_code, response.json()
+    except:
+        return response.status_code, {"error": "Non-JSON response", "details": response.text[:200]}
 
-def translate_speech(audio_path, target_lang_name):
-    if not audio_path: return "No audio recorded.", ""
+def translate_speech(audio_path, target_lang):
+    if not audio_path:
+        return "No audio recorded.", "", "Empty input."
+
+    log_entry = f"--- New Request ---\n"
     
     # 1. Transcription
     status_asr, asr_data = query_api(WHISPER_URL, audio_path, is_audio=True)
-    if status_asr != 200: return f"ASR Error: {asr_data}", ""
+    if status_asr != 200:
+        err = asr_data.get('error', 'Unknown ASR Error')
+        return f"Error: {err}", "", f"ASR Status {status_asr}: {asr_data}"
+    
     transcript = asr_data.get("text", "")
+    log_entry += f"Transcript: {transcript}\n"
 
-    # 2. Translation using NLLB
-    target_code = LANG_MAP[target_lang_name]
-    payload = {
-        "inputs": transcript,
-        "parameters": {"src_lang": "eng_Latn", "tgt_lang": target_code}
-    }
+    # 2. Translation
+    # Note: Helsinki models are pair-specific. For a multi-lang demo,
+    # NLLB is better, but if it gives 404, we check for it here:
+    status_tr, tr_data = query_api(TRANSLATE_URL, {"inputs": transcript})
     
-    status_tr, tr_data = query_api(NLLB_URL, payload)
-    
-    # Handle the "Model Loading" 503 error gracefully
-    if status_tr == 503:
-        return transcript, "Model is waking up... please try again in 10 seconds."
-    
-    # NLLB usually returns a list of dictionaries
+    if status_tr != 200:
+        return transcript, "Translation Model Offline (404/503)", f"TR Status {status_tr}: {tr_data}"
+
+    # Extract translation from list format
     try:
-        translation = tr_data[0].get("translation_text", "Error")
+        translation = tr_data[0].get("translation_text", "Result missing")
     except:
-        translation = f"API Error: {tr_data}"
-        
-    return transcript, translation
+        translation = "Parsing Error"
 
-# --- UI Layout ---
-with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🌍 Multilingual Speech Translator")
+    return transcript, translation, log_entry + "Success!"
+
+# --- UI Definition ---
+with gr.Blocks() as demo:
+    gr.Markdown("# 🎙️ VOXTRAL Mini-Demo")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="1. Record English Speech")
-        lang_dropdown = gr.Dropdown(
-            choices=list(LANG_MAP.keys()), 
-            value="French", 
-            label="2. Select Target Language"
-        )
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Record Speech")
+        # For now, let's keep it to French to ensure stability
+        lang_choice = gr.Dropdown(choices=["French"], value="French", label="Target Language")
     
     with gr.Row():
-        txt_out = gr.Textbox(label="Transcription (English)")
+        txt_out = gr.Textbox(label="English Transcription")
         trn_out = gr.Textbox(label="Translation")
 
-    # Trigger translation when recording stops
+    with gr.Accordion("System Logs", open=False):
+        debug_out = gr.Textbox(label="Raw API Trace")
+
     audio_in.stop_recording(
         translate_speech, 
-        inputs=[audio_in, lang_dropdown], 
-        outputs=[txt_out, trn_out]
+        inputs=[audio_in, lang_choice], 
+        outputs=[txt_out, trn_out, debug_out]
     )
 
-    # Background Warm-up
-    demo.load(lambda: requests.post(NLLB_URL, headers=headers, json={"inputs": "warmup"}))
-
-demo.launch(server_name="0.0.0.0", server_port=7860)
+if __name__ == "__main__":
+    # Fix for Gradio 6.0: Move theme and ssr_mode here
+    demo.launch(
+        server_name="0.0.0.0", 
+        server_port=7860, 
+        theme=gr.themes.Soft(),
+        ssr_mode=False
+    )
