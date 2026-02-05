@@ -3,56 +3,58 @@ from huggingface_hub import InferenceClient
 import os
 import sys
 
-# Force logs to appear immediately
+# Force output to logs
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-# Initialize the client with your secret token
-# If HF_TOKEN is missing in Settings, this will use guest limits
+# Initialize Client
 client = InferenceClient(token=os.getenv("HF_TOKEN"))
 
-def translate_speech(audio):
-    if audio is None:
+def translate_speech(audio_path):
+    if not audio_path:
         return "No audio recorded.", ""
     
     try:
-        # 1. ASR (Speech to Text)
-        # Using a reliable model for the free Inference API
-        asr_output = client.automatic_speech_recognition(
-            audio, 
+        print(f"Processing audio from: {audio_path}")
+        
+        # 1. Transcription (Whisper)
+        asr_result = client.automatic_speech_recognition(
+            audio_path, 
             model="openai/whisper-large-v3-turbo"
         )
-        text = asr_output.text
+        transcript = asr_result.text
+        print(f"Transcript: {transcript}")
+
+        # 2. Translation (Helsinki-NLP is more stable on free API than NLLB)
+        # It automatically handles English to French
+        translation_result = client.translation(
+            transcript,
+            model="Helsinki-NLP/opus-mt-en-fr"
+        )
+        translated_text = translation_result.translation_text
+        print(f"Translation: {translated_text}")
         
-        # 2. Translation (Text to French)
-        # We pass the src/tgt codes directly as part of the model string or data
-        # Most NLLB instances on HF API default to English if not specified, 
-        # but let's use the standard translation task.
-        translation = client.translation(
-            text,
-            model="facebook/nllb-200-distilled-600M"
-        ).translation_text
-        
-        return text, translation
+        return transcript, translated_text
 
     except Exception as e:
-        print(f"Error encountered: {e}")
-        return f"Error: {str(e)}", ""
+        # If it's a 'NoneType' or empty error, we catch it here
+        error_msg = str(e) if str(e) else "Unknown API Error (Empty response)"
+        print(f"DETAILED ERROR: {error_msg}")
+        return f"Error: {error_msg}", ""
 
-# Define the UI
+# Gradio 6.0 UI
 with gr.Blocks() as demo:
-    gr.Markdown("# 🎙️ Real-time Prototype")
+    gr.Markdown("## 🎙️ Speech-to-French Prototype")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Record Speech")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Record")
     
     with gr.Column():
-        transcription = gr.Textbox(label="Transcription")
-        translation = gr.Textbox(label="Translation")
+        out_transcription = gr.Textbox(label="Transcription (English)")
+        out_translation = gr.Textbox(label="Translation (French)")
     
-    # Process when the user stops recording
-    audio_in.stop_recording(translate_speech, inputs=audio_in, outputs=[transcription, translation])
+    # Triggering on 'change' or 'stop_recording'
+    audio_in.stop_recording(translate_speech, inputs=audio_in, outputs=[out_transcription, out_translation])
 
-# IMPORTANT: server_name and port are required for HF Spaces
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860)
