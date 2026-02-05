@@ -13,18 +13,23 @@ TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/Helsinki-NLP/
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
 def query_api(url, data=None, is_audio=False):
-    if is_audio:
-        with open(data, "rb") as f:
-            response = requests.post(url, headers=headers, data=f)
-    else:
-        response = requests.post(url, headers=headers, json={"inputs": data})
+    # Copy headers so we don't accidentally modify the global ones
+    current_headers = headers.copy()
     
-    # 1. Check if the response is valid JSON
+    if is_audio:
+        # NEW: Explicitly tell the server this is a WAV file
+        current_headers["Content-Type"] = "audio/wav"
+        with open(data, "rb") as f:
+            audio_bytes = f.read()
+            response = requests.post(url, headers=current_headers, data=audio_bytes)
+    else:
+        # Standard JSON for translation
+        response = requests.post(url, headers=current_headers, json={"inputs": data})
+    
     try:
         return response.status_code, response.json()
     except Exception:
-        # If not JSON, return the raw text (likely an HTML error)
-        return response.status_code, response.text[:500] 
+        return response.status_code, response.text[:500]
 
 def process_all(audio_path, current_logs):
     if not audio_path:
