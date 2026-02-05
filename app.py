@@ -31,10 +31,9 @@ def query_api(url, payload, is_audio=False):
 def translate_speech(audio_path, input_lang, target_lang):
     if not audio_path: return "No audio.", ""
     
-    # 1. Transcribe (Whisper detects lang or uses provided hint)
-    # Hint: We can pass 'language' to Whisper to improve accuracy
-    asr_payload = audio_path
-    res_asr = query_api(WHISPER_URL, as_asr_payload, is_audio=True)
+    # Transcription (Using the correct variable name)
+    asr_payload = audio_path  # This defines the variable
+    res_asr = query_api(WHISPER_URL, asr_payload, is_audio=True) # Use it here
     transcript = res_asr.get("text", "Transcription failed.")
 
     # 2. Translate (Source to Target)
