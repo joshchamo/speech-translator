@@ -1,24 +1,19 @@
 import gradio as gr
 import requests
 import os
-import base64
 
 API_TOKEN = os.getenv("HF_TOKEN")
 WHISPER_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
 TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/facebook/mbart-large-50-many-to-many-mmt"
 
-# Mapping for Translation (mBART-50) and TTS (MMS)
-# Note: MMS TTS uses 3-letter ISO codes (fra, spa, deu)
+# Mapping for Translation and TTS
 LANG_DATA = {
     "English": {"mbart": "en_XX", "mms": "eng"},
     "Spanish": {"mbart": "es_XX", "mms": "spa"},
     "French": {"mbart": "fr_XX", "mms": "fra"},
     "German": {"mbart": "de_DE", "mms": "deu"},
     "Hindi": {"mbart": "hi_IN", "mms": "hin"},
-    "Japanese": {"mbart": "ja_XX", "mms": "jpn"},
-    "Russian": {"mbart": "ru_RU", "mms": "rus"},
-    "Turkish": {"mbart": "tr_TR", "mms": "tur"},
-    "Vietnamese": {"mbart": "vi_VN", "mms": "vie"}
+    "Japanese": {"mbart": "ja_XX", "mms": "jpn"}
 }
 
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
@@ -32,22 +27,18 @@ def query_api(url, payload, is_audio_in=False, is_audio_out=False):
     else:
         response = requests.post(url, headers=h, json=payload)
     
-    if response.status_code != 200:
-        return None
-    
+    if response.status_code != 200: return None
     return response.content if is_audio_out else response.json()
 
 def text_to_speech(text, language):
-    if not text: return None
+    if not text or language not in LANG_DATA: return None
     mms_code = LANG_DATA[language]["mms"]
     tts_url = f"https://router.huggingface.co/hf-inference/models/facebook/mms-tts-{mms_code}"
     
     audio_content = query_api(tts_url, {"inputs": text}, is_audio_out=True)
     if audio_content:
-        # Save to a temporary file for Gradio to play
         out_path = "output.wav"
-        with open(out_path, "wb") as f:
-            f.write(audio_content)
+        with open(out_path, "wb") as f: f.write(audio_content)
         return out_path
     return None
 
@@ -67,37 +58,46 @@ def translate_speech(audio_path, input_lang, target_lang):
         }
     }
     tr_res = query_api(TRANSLATE_URL, payload)
-    translation = tr_res[0].get("translation_text", "Error") if tr_res else "Translation Failed"
+    translation = tr_res[0].get("translation_text", "") if tr_res else ""
     
-    # 3. Generate Speech Automatically (Optional)
+    # 3. Generate initial speech
     audio_out = text_to_speech(translation, target_lang)
-    
     return transcript, translation, audio_out
 
+# --- GRADIO UI ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🔊 VOXTRAL: Voice-to-Voice Translator")
+    gr.Markdown("# 🔊 VOXTRAL Voice-to-Voice")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Speak")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="1. Speak Here")
         with gr.Column():
             in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
             out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
     
     with gr.Row():
-        txt_out = gr.Textbox(label="Transcription")
-        trn_out = gr.Textbox(label="Translation")
+        txt_out = gr.Textbox(label="Transcription (Source)")
+        with gr.Column():
+            trn_out = gr.Textbox(label="Translation (Target)")
+            # THE NEW BUTTON:
+            speak_btn = gr.Button("🔊 Speak Translation", variant="primary")
     
-    audio_out = gr.Audio(label="Translated Voice", interactive=False)
+    # The output audio player (hidden or visible)
+    # autoplay=True ensures it plays as soon as the translation is done
+    audio_out = gr.Audio(label="Audio Output", autoplay=True, interactive=False)
     
-    # Trigger all three steps at once
+    # Event 1: Automatic processing when recording stops
     audio_in.stop_recording(
         translate_speech, 
         inputs=[audio_in, in_lang, out_lang], 
         outputs=[txt_out, trn_out, audio_out]
     )
     
-    # Manual "Speak Again" Button
-    speak_btn = gr.Button("🔊 Read Translation Again")
-    speak_btn.click(text_to_speech, inputs=[trn_out, out_lang], outputs=audio_out)
+    # Event 2: Manual trigger when button is clicked
+    speak_btn.click(
+        text_to_speech, 
+        inputs=[trn_out, out_lang], 
+        outputs=audio_out
+    )
 
-demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
+if __name__ == "__main__":
+    demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
