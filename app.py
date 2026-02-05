@@ -6,7 +6,6 @@ API_TOKEN = os.getenv("HF_TOKEN")
 WHISPER_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
 TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/facebook/mbart-large-50-many-to-many-mmt"
 
-# Mapping for Translation and TTS
 LANG_DATA = {
     "English": {"mbart": "en_XX", "mms": "eng"},
     "Spanish": {"mbart": "es_XX", "mms": "spa"},
@@ -18,36 +17,33 @@ LANG_DATA = {
 
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
-def query_api(url, payload, is_audio_in=False, is_audio_out=False):
-    h = headers.copy()
-    if is_audio_in:
-        h["Content-Type"] = "audio/wav"
-        with open(payload, "rb") as f: data = f.read()
-        response = requests.post(url, headers=h, data=data)
-    else:
-        response = requests.post(url, headers=h, json=payload)
-    
-    if response.status_code != 200: return None
-    return response.content if is_audio_out else response.json()
-
 def text_to_speech(text, language):
-    if not text or language not in LANG_DATA: return None
+    if not text: return None
     mms_code = LANG_DATA[language]["mms"]
     tts_url = f"https://router.huggingface.co/hf-inference/models/facebook/mms-tts-{mms_code}"
     
-    audio_content = query_api(tts_url, {"inputs": text}, is_audio_out=True)
-    if audio_content:
+    print(f"--- TTS Request for {language} ---")
+    response = requests.post(tts_url, headers=headers, json={"inputs": text})
+    
+    # Check if the response is actually audio
+    content_type = response.headers.get("Content-Type", "")
+    if response.status_code == 200 and "audio" in content_type:
+        print("TTS Success: Audio received.")
         out_path = "output.wav"
-        with open(out_path, "wb") as f: f.write(audio_content)
+        with open(out_path, "wb") as f:
+            f.write(response.content)
         return out_path
-    return None
+    else:
+        print(f"TTS Failed: Status {response.status_code}, Content: {response.text[:100]}")
+        # Return None so the UI doesn't try to play a broken file
+        return None
 
 def translate_speech(audio_path, input_lang, target_lang):
     if not audio_path: return "", "", None
     
     # 1. Transcribe
-    asr_res = query_api(WHISPER_URL, audio_path, is_audio_in=True)
-    transcript = asr_res.get("text", "Error") if asr_res else "ASR Failed"
+    asr_resp = requests.post(WHISPER_URL, headers=headers, data=open(audio_path, "rb").read())
+    transcript = asr_resp.json().get("text", "ASR Error")
 
     # 2. Translate
     payload = {
@@ -57,47 +53,31 @@ def translate_speech(audio_path, input_lang, target_lang):
             "tgt_lang": LANG_DATA[target_lang]["mbart"]
         }
     }
-    tr_res = query_api(TRANSLATE_URL, payload)
-    translation = tr_res[0].get("translation_text", "") if tr_res else ""
+    tr_resp = requests.post(TRANSLATE_URL, headers=headers, json=payload)
+    translation = tr_resp.json()[0].get("translation_text", "Translation Error")
     
-    # 3. Generate initial speech
+    # 3. TTS
     audio_out = text_to_speech(translation, target_lang)
     return transcript, translation, audio_out
 
-# --- GRADIO UI ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🔊 VOXTRAL Voice-to-Voice")
+    gr.Markdown("# 🔊 VOXTRAL v2 (with Debugging)")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="1. Speak Here")
-        with gr.Column():
-            in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
-            out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Input")
+        in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
+        out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
     
     with gr.Row():
-        txt_out = gr.Textbox(label="Transcription (Source)")
-        with gr.Column():
-            trn_out = gr.Textbox(label="Translation (Target)")
-            # THE NEW BUTTON:
-            speak_btn = gr.Button("🔊 Speak Translation", variant="primary")
+        txt_out = gr.Textbox(label="Transcription")
+        trn_out = gr.Textbox(label="Translation")
     
-    # The output audio player (hidden or visible)
-    # autoplay=True ensures it plays as soon as the translation is done
-    audio_out = gr.Audio(label="Audio Output", autoplay=True, interactive=False)
-    
-    # Event 1: Automatic processing when recording stops
-    audio_in.stop_recording(
-        translate_speech, 
-        inputs=[audio_in, in_lang, out_lang], 
-        outputs=[txt_out, trn_out, audio_out]
-    )
-    
-    # Event 2: Manual trigger when button is clicked
-    speak_btn.click(
-        text_to_speech, 
-        inputs=[trn_out, out_lang], 
-        outputs=audio_out
-    )
+    with gr.Row():
+        audio_out = gr.Audio(label="Output Audio", autoplay=True)
+        speak_btn = gr.Button("🔊 Speak Translation")
+
+    audio_in.stop_recording(translate_speech, [audio_in, in_lang, out_lang], [txt_out, trn_out, audio_out])
+    speak_btn.click(text_to_speech, [trn_out, out_lang], audio_out)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
