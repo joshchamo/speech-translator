@@ -8,8 +8,8 @@ import json
 sys.stdout.reconfigure(line_buffering=True)
 
 API_TOKEN = os.getenv("HF_TOKEN")
-WHISPER_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
-TRANSLATE_URL = "https://api-inference.huggingface.co/models/Helsinki-NLP/opus-mt-en-fr"
+WHISPER_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
+TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/Helsinki-NLP/opus-mt-en-fr"
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
 def query_api(url, data=None, is_audio=False):
