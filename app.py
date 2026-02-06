@@ -5,68 +5,65 @@ import sys
 import requests
 from huggingface_hub import InferenceClient
 
-# Ensure real-time logging
+# Unbuffered logging for real-time debugging
 sys.stdout.reconfigure(line_buffering=True)
 
-print("--- INITIALIZING VOXTRAL V9 ---", flush=True)
+print("--- INITIALIZING VOXTRAL V10 ---", flush=True)
 
 API_TOKEN = os.getenv("HF_TOKEN")
 client = InferenceClient(token=API_TOKEN)
 
-# THE NEW 2026 ROUTER ENDPOINT
-# Old: https://api-inference.huggingface.co/models/
-# New: https://router.huggingface.co/hf-inference/models/
+# The correct 2026 router path
 ROUTER_BASE = "https://router.huggingface.co/hf-inference/models"
 
 STT_MODEL = "openai/whisper-large-v3-turbo"
 TRANSLATE_MODEL = "facebook/mbart-large-50-many-to-many-mmt"
+# THE NEW UNIFIED REPO (Replacing the 1100+ separate repos)
+TTS_MODEL_BASE = "facebook/mms-tts"
 
+# ISO 639-3 codes for MMS
 LANG_DATA = {
-    "English": "en_XX", 
-    "Spanish": "es_XX", 
-    "French": "fr_XX", 
-    "German": "de_DE", 
-    "Japanese": "ja_XX"
+    "English": {"mbart": "en_XX", "mms": "eng"}, 
+    "Spanish": {"mbart": "es_XX", "mms": "spa"}, 
+    "French": {"mbart": "fr_XX", "mms": "fra"}, 
+    "German": {"mbart": "de_DE", "mms": "deu"}, 
+    "Japanese": {"mbart": "ja_XX", "mms": "jpn"}
 }
 
 def translate_and_speak(audio_path, in_lang, out_lang):
     if not audio_path: return "", "", None
-    
     headers = {"Authorization": f"Bearer {API_TOKEN}"}
     
     try:
-        # 1. Transcription (Whisper-v3)
-        print("DEBUG: Transcribing speech...", flush=True)
+        # 1. Transcription
+        print("DEBUG: STT start...", flush=True)
         asr_res = client.automatic_speech_recognition(audio_path, model=STT_MODEL)
         transcript = asr_res.text
-        print(f"DEBUG: Found text: {transcript}", flush=True)
 
-        # 2. Translation (Using the NEW Router URL)
-        print("DEBUG: Requesting translation from Router...", flush=True)
+        # 2. Translation
+        print("DEBUG: Translation start...", flush=True)
         translate_url = f"{ROUTER_BASE}/{TRANSLATE_MODEL}"
-        
-        payload = {
+        tr_payload = {
             "inputs": transcript,
             "parameters": {
-                "src_lang": LANG_DATA[in_lang], 
-                "tgt_lang": LANG_DATA[out_lang]
+                "src_lang": LANG_DATA[in_lang]["mbart"], 
+                "tgt_lang": LANG_DATA[out_lang]["mbart"]
             }
         }
-        
-        response = requests.post(translate_url, headers=headers, json=payload, timeout=30)
-        
-        if response.status_code != 200:
-            raise Exception(f"Router Error {response.status_code}: {response.text}")
-            
-        translation = response.json()[0]['translation_text']
-        print(f"DEBUG: Translated to: {translation}", flush=True)
+        tr_resp = requests.post(translate_url, headers=headers, json=tr_payload, timeout=30)
+        translation = tr_resp.json()[0]['translation_text']
 
-        # 3. Text-to-Speech (MMS)
-        lang_short = LANG_DATA[out_lang][:2]
-        tts_model = f"facebook/mms-tts-{lang_short}"
-        print(f"DEBUG: Generating audio via {tts_model}...", flush=True)
+        # 3. TTS with Language Adapter (The fix for your 404)
+        print(f"DEBUG: TTS start for {out_lang}...", flush=True)
+        mms_code = LANG_DATA[out_lang]["mms"]
         
-        audio_content = client.text_to_speech(translation, model=tts_model)
+        # We call the BASE model and pass the language as a parameter
+        # This is how the Inference API handles the 1100+ MMS languages now
+        audio_content = client.text_to_speech(
+            translation, 
+            model=TTS_MODEL_BASE,
+            parameters={"language": mms_code}
+        )
         
         out_path = "output.wav"
         with open(out_path, "wb") as f:
@@ -76,33 +73,22 @@ def translate_and_speak(audio_path, in_lang, out_lang):
     
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}", flush=True)
-        return f"System Alert: {str(e)}", "Please check router status", None
+        return f"System Error: {str(e)}", "Please check language codes", None
 
-# --- Gradio UI Layout ---
+# --- UI Setup ---
 with gr.Blocks() as demo:
-    gr.Markdown("# 🎙️ VOXTRAL v9: Router-Powered")
+    gr.Markdown("# 🎙️ VOXTRAL v10: Unified TTS Repo")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Voice Input")
-        with gr.Column():
-            in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="Translate From")
-            out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="Translate To")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Speak")
+        in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
+        out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
     
-    with gr.Row():
-        txt_out = gr.Textbox(label="Transcription")
-        trn_out = gr.Textbox(label="Translation")
+    txt_out = gr.Textbox(label="Transcript")
+    trn_out = gr.Textbox(label="Translation")
+    audio_out = gr.Audio(label="Spoken Result", autoplay=True)
     
-    audio_out = gr.Audio(label="Voice Output", autoplay=True)
-    
-    audio_in.stop_recording(
-        translate_and_speak, 
-        inputs=[audio_in, in_lang, out_lang], 
-        outputs=[txt_out, trn_out, audio_out]
-    )
+    audio_in.stop_recording(translate_and_speak, [audio_in, in_lang, out_lang], [txt_out, trn_out, audio_out])
 
 if __name__ == "__main__":
-    demo.launch(
-        server_name="0.0.0.0", 
-        server_port=7860, 
-        theme=gr.themes.Soft()
-    )
+    demo.launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())
