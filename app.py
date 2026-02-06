@@ -1,16 +1,25 @@
 import gradio as gr
 import os
 import json
+import sys
 from huggingface_hub import InferenceClient
 
-# Initialize the client - the 2026 standard for HF interactions
-client = InferenceClient(token=os.getenv("HF_TOKEN"))
+# Force logs to print immediately
+sys.stdout.reconfigure(line_buffering=True)
 
-# High-availability models
+print("--- APP STARTING ---", flush=True)
+
+# Test Token Presence
+token = os.getenv("HF_TOKEN")
+if not token:
+    print("CRITICAL: HF_TOKEN is missing!", flush=True)
+
+client = InferenceClient(token=token)
+
+# Models
 STT_MODEL = "openai/whisper-large-v3-turbo"
 TRANSLATE_MODEL = "facebook/mbart-large-50-many-to-many-mmt"
 
-# Consistent variable naming to avoid NameErrors
 LANG_DATA = {
     "English": "en_XX", 
     "Spanish": "es_XX", 
@@ -21,27 +30,30 @@ LANG_DATA = {
 
 def translate_and_speak(audio_path, in_lang, out_lang):
     if not audio_path: return "", "", None
+    print(f"DEBUG: Processing audio from {audio_path}", flush=True)
     
     try:
-        # 1. Transcription (Serverless)
+        # 1. Transcription
+        print(f"DEBUG: Calling STT...", flush=True)
         asr_res = client.automatic_speech_recognition(audio_path, model=STT_MODEL)
         transcript = asr_res.text
+        print(f"DEBUG: Transcript: {transcript}", flush=True)
 
-        # 2. Translation (Using client.request for custom parameters)
-        src_code = LANG_DATA[in_lang]
-        tgt_code = LANG_DATA[out_lang]
-        
+        # 2. Translation
+        print(f"DEBUG: Calling Translation...", flush=True)
         payload = {
             "inputs": transcript,
-            "parameters": {"src_lang": src_code, "tgt_lang": tgt_code}
+            "parameters": {"src_lang": LANG_DATA[in_lang], "tgt_lang": LANG_DATA[out_lang]}
         }
-        
+        # Using the most robust request method for 2026
         response = client.request(json=payload, model=TRANSLATE_MODEL)
         translation = json.loads(response.decode())[0]['translation_text']
+        print(f"DEBUG: Translation: {translation}", flush=True)
 
-        # 3. Text-to-Speech (MMS Model)
-        lang_short = tgt_code[:2]
+        # 3. TTS
+        lang_short = LANG_DATA[out_lang][:2]
         tts_model = f"facebook/mms-tts-{lang_short}"
+        print(f"DEBUG: Calling TTS ({tts_model})...", flush=True)
         
         audio_content = client.text_to_speech(translation, model=tts_model)
         
@@ -49,39 +61,33 @@ def translate_and_speak(audio_path, in_lang, out_lang):
         with open(out_path, "wb") as f:
             f.write(audio_content)
             
+        print("DEBUG: Processing Complete.", flush=True)
         return transcript, translation, out_path
     
     except Exception as e:
-        return f"Error: {str(e)}", "Please try again", None
+        print(f"CRITICAL ERROR: {str(e)}", flush=True)
+        return f"Error: {str(e)}", "Check Logs", None
 
-# --- UI Setup (Gradio 6.0 Compliant) ---
+# --- UI Setup ---
 with gr.Blocks() as demo:
-    gr.Markdown("# 🎙️ Universal Voxtral v6")
+    gr.Markdown("# 🎙️ VOXTRAL v7 (Debug Mode)")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Record Your Voice")
-        with gr.Column():
-            in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="Source Language")
-            out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="Target Language")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Speak")
+        in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
+        out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
     
-    with gr.Row():
-        txt_out = gr.Textbox(label="Transcript")
-        trn_out = gr.Textbox(label="Translation")
+    txt_out = gr.Textbox(label="Transcript")
+    trn_out = gr.Textbox(label="Translation")
+    audio_out = gr.Audio(label="Voice Output", autoplay=True)
     
-    audio_out = gr.Audio(label="Spoken Translation", autoplay=True)
-    
-    # Event listener
-    audio_in.stop_recording(
-        translate_and_speak, 
-        inputs=[audio_in, in_lang, out_lang], 
-        outputs=[txt_out, trn_out, audio_out]
-    )
+    audio_in.stop_recording(translate_and_speak, [audio_in, in_lang, out_lang], [txt_out, trn_out, audio_out])
 
 if __name__ == "__main__":
-    # In Gradio 6.0, the theme belongs here in launch()
+    print("--- LAUNCHING GRADIO ---", flush=True)
+    # Gradio 6.0: theme and other params in launch()
     demo.launch(
         server_name="0.0.0.0", 
         server_port=7860, 
-        ssr_mode=False, 
         theme=gr.themes.Soft()
     )
