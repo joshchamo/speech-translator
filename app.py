@@ -5,17 +5,21 @@ import sys
 import requests
 from huggingface_hub import InferenceClient
 
-# Force logs to print immediately
+# Ensure real-time logging
 sys.stdout.reconfigure(line_buffering=True)
 
-print("--- APP STARTING V8 ---", flush=True)
+print("--- INITIALIZING VOXTRAL V9 ---", flush=True)
 
 API_TOKEN = os.getenv("HF_TOKEN")
 client = InferenceClient(token=API_TOKEN)
 
-# Model Endpoints
+# THE NEW 2026 ROUTER ENDPOINT
+# Old: https://api-inference.huggingface.co/models/
+# New: https://router.huggingface.co/hf-inference/models/
+ROUTER_BASE = "https://router.huggingface.co/hf-inference/models"
+
 STT_MODEL = "openai/whisper-large-v3-turbo"
-TRANSLATE_URL = "https://api-inference.huggingface.co/models/facebook/mbart-large-50-many-to-many-mmt"
+TRANSLATE_MODEL = "facebook/mbart-large-50-many-to-many-mmt"
 
 LANG_DATA = {
     "English": "en_XX", 
@@ -31,14 +35,16 @@ def translate_and_speak(audio_path, in_lang, out_lang):
     headers = {"Authorization": f"Bearer {API_TOKEN}"}
     
     try:
-        # 1. Transcription (Whisper is usually very stable in the client)
-        print("DEBUG: Calling STT...", flush=True)
+        # 1. Transcription (Whisper-v3)
+        print("DEBUG: Transcribing speech...", flush=True)
         asr_res = client.automatic_speech_recognition(audio_path, model=STT_MODEL)
         transcript = asr_res.text
-        print(f"DEBUG: Transcript: {transcript}", flush=True)
+        print(f"DEBUG: Found text: {transcript}", flush=True)
 
-        # 2. Translation (Using standard requests for total control)
-        print("DEBUG: Calling Translation...", flush=True)
+        # 2. Translation (Using the NEW Router URL)
+        print("DEBUG: Requesting translation from Router...", flush=True)
+        translate_url = f"{ROUTER_BASE}/{TRANSLATE_MODEL}"
+        
         payload = {
             "inputs": transcript,
             "parameters": {
@@ -47,18 +53,18 @@ def translate_and_speak(audio_path, in_lang, out_lang):
             }
         }
         
-        response = requests.post(TRANSLATE_URL, headers=headers, json=payload, timeout=20)
+        response = requests.post(translate_url, headers=headers, json=payload, timeout=30)
         
         if response.status_code != 200:
-            raise Exception(f"Translation API Error {response.status_code}: {response.text}")
+            raise Exception(f"Router Error {response.status_code}: {response.text}")
             
         translation = response.json()[0]['translation_text']
-        print(f"DEBUG: Translation: {translation}", flush=True)
+        print(f"DEBUG: Translated to: {translation}", flush=True)
 
-        # 3. TTS (MMS)
+        # 3. Text-to-Speech (MMS)
         lang_short = LANG_DATA[out_lang][:2]
         tts_model = f"facebook/mms-tts-{lang_short}"
-        print(f"DEBUG: Calling TTS ({tts_model})...", flush=True)
+        print(f"DEBUG: Generating audio via {tts_model}...", flush=True)
         
         audio_content = client.text_to_speech(translation, model=tts_model)
         
@@ -70,19 +76,20 @@ def translate_and_speak(audio_path, in_lang, out_lang):
     
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}", flush=True)
-        return f"Error: {str(e)}", "Please try again", None
+        return f"System Alert: {str(e)}", "Please check router status", None
 
-# --- UI Setup ---
+# --- Gradio UI Layout ---
 with gr.Blocks() as demo:
-    gr.Markdown("# 🎙️ VOXTRAL v8 (Final Stability Fix)")
+    gr.Markdown("# 🎙️ VOXTRAL v9: Router-Powered")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Speak")
-        in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
-        out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Voice Input")
+        with gr.Column():
+            in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="Translate From")
+            out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="Translate To")
     
     with gr.Row():
-        txt_out = gr.Textbox(label="Transcript")
+        txt_out = gr.Textbox(label="Transcription")
         trn_out = gr.Textbox(label="Translation")
     
     audio_out = gr.Audio(label="Voice Output", autoplay=True)
