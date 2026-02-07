@@ -5,131 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>50-Language Speech Translator</title>
 <style>
-body { font-family: sans-serif; margin: 2rem; }
-h1 { font-size: 1.8rem; margin-bottom: 1rem; }
-label { font-weight: bold; margin-top: 1rem; display: block; }
-button { margin-top: 1rem; padding: 0.5rem 1rem; font-size: 1rem; }
-select, textarea { width: 100%; margin-top: 0.5rem; padding: 0.4rem; font-size: 1rem; }
-audio { margin-top: 1rem; width: 100%; }
+  /* Reset and base */
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f4f6f8;
+    color: #333;
+  }
+
+  header {
+    background: linear-gradient(90deg, #4f46e5, #3b82f6);
+    color: white;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+  }
+
+  main {
+    padding: 2rem;
+    display: flex;
+    justify-content: center;
+  }
+
+  .iframe-container {
+    width: 100%;
+    max-width: 900px;
+    height: 850px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+
+  iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  footer {
+    text-align: center;
+    padding: 1rem;
+    font-size: 0.9rem;
+    color: #666;
+  }
+
+  @media (max-width: 640px) {
+    main { padding: 1rem; }
+    .iframe-container { height: 700px; }
+  }
 </style>
 </head>
 <body>
 
-<h1>🌍 50-Language Speech Translator</h1>
+<header>
+  <h1>🌍 50-Language Speech Translator</h1>
+  <p>Powered by Whisper + mBART-50 + gTTS</p>
+</header>
 
-<label for="inputLang">Input Language:</label>
-<select id="inputLang">
-  <option>English</option>
-  <option>Spanish</option>
-  <option>French</option>
-  <option>German</option>
-  <option>Japanese</option>
-  <option>Chinese</option>
-</select>
+<main>
+  <div class="iframe-container">
+    <iframe 
+      src="https://huggingface.co/spaces/Jchamo/speech-to-speech-translation-50-languages?__theme=light" 
+      allow="microphone"
+      title="Speech Translator"
+    ></iframe>
+  </div>
+</main>
 
-<label for="targetLang">Target Language:</label>
-<select id="targetLang">
-  <option>Spanish</option>
-  <option>English</option>
-  <option>French</option>
-  <option>German</option>
-  <option>Japanese</option>
-  <option>Chinese</option>
-</select>
-
-<label>Record your speech:</label>
-<button id="recordBtn">Start Recording</button>
-<button id="stopBtn" disabled>Stop Recording</button>
-
-<label>Transcription:</label>
-<textarea id="transcript" rows="3" readonly></textarea>
-
-<label>Translation:</label>
-<textarea id="translation" rows="3" readonly></textarea>
-
-<label>Spoken Translation:</label>
-<audio id="audioOut" controls disabled></audio>
-
-<label>Debug:</label>
-<textarea id="debug" rows="3" readonly></textarea>
-
-<script src="https://cdn.jsdelivr.net/npm/@gradio/client@latest/dist/gradio.min.js"></script>
-<script>
-const spaceUrl = "https://jchamo-speech-to-speech-translation-50-languages.hf.space";
-const client = new gradio.Client(spaceUrl);
-
-let recorder, audioChunks = [];
-
-const recordBtn = document.getElementById("recordBtn");
-const stopBtn = document.getElementById("stopBtn");
-const inputLang = document.getElementById("inputLang");
-const targetLang = document.getElementById("targetLang");
-const transcriptBox = document.getElementById("transcript");
-const translationBox = document.getElementById("translation");
-const audioOut = document.getElementById("audioOut");
-const debugBox = document.getElementById("debug");
-
-// Start Recording safely
-recordBtn.addEventListener("click", async () => {
-  recordBtn.disabled = true;
-  debugBox.value = "Initializing microphone…";
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioChunks = [];
-    recorder = new MediaRecorder(stream);
-
-    recorder.ondataavailable = e => audioChunks.push(e.data);
-
-    recorder.onstop = async () => {
-      const blob = new Blob(audioChunks, { type: "audio/wav" });
-      const file = new File([blob], "input.wav");
-
-      debugBox.value = "Processing…";
-
-      try {
-        const result = await client.call("run_pipeline", [file, inputLang.value, targetLang.value]);
-
-        transcriptBox.value = result[0] || "";
-        translationBox.value = result[1] || "";
-
-        const audioBase64 = result[2];
-        if(audioBase64){
-          audioOut.src = audioBase64;
-          audioOut.disabled = false;
-          audioOut.load();
-        } else {
-          audioOut.src = "";
-          audioOut.disabled = true;
-        }
-
-        debugBox.value = result[3] || "Done";
-      } catch(err){
-        console.error(err);
-        debugBox.value = "Error: " + err;
-      }
-    };
-
-    recorder.start();
-    stopBtn.disabled = false;
-    debugBox.value = "Recording…";
-
-  } catch(err) {
-    console.error(err);
-    debugBox.value = "Microphone error: " + err;
-    recordBtn.disabled = false;
-  }
-});
-
-// Stop recording
-stopBtn.addEventListener("click", () => {
-  if(recorder && recorder.state !== "inactive") {
-    recorder.stop();
-    recordBtn.disabled = false;
-    stopBtn.disabled = true;
-  }
-});
-</script>
+<footer>
+  <p>Demo hosted on HuggingFace Spaces • Frontend served via Vercel</p>
+</footer>
 
 </body>
 </html>
