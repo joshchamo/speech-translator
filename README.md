@@ -13,12 +13,21 @@ models:
 - facebook/mbart-large-50-many-to-many-mmt
 - engine gTTS (Google Text-to-Speech)
 tags:
-- speech-to-speech
-- translation
-- automatic-speech-recognition
-- audio-to-audio
-- whisper
-- mbart
+  - speech-to-text
+  - speech-translation
+  - speech-to-speech
+  - transcription
+  - translation
+  - automatic-speech-recognition
+  - text-to-speech
+  - audio-to-audio
+  - multilingual
+  - whisper
+  - mbart
+  - gtts
+  - gradio
+  - audio
+  - voice
 sdk_version: 6.5.1
 ---
 
