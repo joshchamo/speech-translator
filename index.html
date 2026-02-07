@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Speech-to-Speech Translation · 50 Languages</title>
+  <title>Speech-to-Speech Translator (50 Languages)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <style>
@@ -15,16 +15,16 @@
       padding: 2rem;
     }
     .app {
-      max-width: 560px;
+      max-width: 600px;
       width: 100%;
       background: #020617;
-      border-radius: 14px;
-      padding: 1.5rem;
+      border-radius: 12px;
+      padding: 1.75rem;
     }
     select, button {
       width: 100%;
-      padding: 0.7rem;
-      margin-top: 0.6rem;
+      padding: 0.8rem;
+      margin-top: 0.8rem;
       border-radius: 8px;
       font-size: 1rem;
     }
@@ -33,25 +33,25 @@
       color: #e5e7eb;
       border: 1px solid #334155;
     }
+    button.recording {
+      background: #dc2626;
+      color: white;
+    }
     button {
       background: #4f46e5;
       color: white;
       border: none;
-    }
-    button.recording {
-      background: #dc2626;
     }
     .box {
       margin-top: 1rem;
       background: #020617;
       border: 1px solid #334155;
       border-radius: 8px;
-      padding: 0.75rem;
+      padding: 0.85rem;
       white-space: pre-wrap;
-      font-size: 0.85rem;
     }
     audio {
-      margin-top: 0.75rem;
+      margin-top: 1rem;
       width: 100%;
     }
   </style>
@@ -61,24 +61,14 @@
   <div class="app">
     <h2>🗣️ Speech-to-Speech Translator</h2>
 
-    <select id="language">
-      <option value="English">English</option>
-      <option value="Spanish">Spanish</option>
-      <option value="French">French</option>
-      <option value="German">German</option>
-      <option value="Portuguese">Portuguese</option>
-      <option value="Russian">Russian</option>
-      <option value="Arabic">Arabic</option>
-      <option value="Hindi">Hindi</option>
-      <option value="Japanese">Japanese</option>
-      <option value="Korean">Korean</option>
-      <option value="Chinese">Chinese</option>
-    </select>
+    <select id="inLang"></select>
+    <select id="outLang"></select>
 
     <button id="recordBtn">Start Recording</button>
 
-    <div class="box" id="status">Status: initializing…</div>
-    <div class="box" id="output">Output will appear here</div>
+    <div class="box" id="status">Status: idle</div>
+    <div class="box" id="output"></div>
+    <div class="box" id="debug"></div>
 
     <audio id="audio" controls></audio>
   </div>
@@ -87,72 +77,94 @@
     import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
 
     const SPACE = "Jchamo/speech-to-speech-translation-50-languages";
+    const FN_INDEX = 0;
 
-    const API_NAME = 0;
-
-    const status = document.getElementById("status");
-    const output = document.getElementById("output");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const debugEl = document.getElementById("debug");
     const audioEl = document.getElementById("audio");
-    const lang = document.getElementById("language");
-    const btn = document.getElementById("recordBtn");
+
+    const inLangSelect = document.getElementById("inLang");
+    const outLangSelect = document.getElementById("outLang");
+    const recordBtn = document.getElementById("recordBtn");
 
     let app, recorder, chunks = [], recording = false;
 
-    function log(msg) {
-      console.log(msg);
-      status.textContent += "\n" + msg;
+    // Language list — must match your Space exactly
+    const LANGS = [
+      "Afrikaans","Arabic","Azerbaijani","Bengali","Burmese","Chinese",
+      "Croatian","Czech","Dutch","English","Estonian","Finnish","French",
+      "Galician","Georgian","German","Gujarati","Hebrew","Hindi",
+      "Indonesian","Italian","Japanese","Kazakh","Khmer","Korean",
+      "Latvian","Lithuanian","Macedonian","Malayalam","Marathi","Mongolian",
+      "Nepali","Pashto","Persian","Polish","Portuguese","Romanian","Russian",
+      "Sinhala","Slovene","Spanish","Swahili","Swedish","Tagalog","Tamil",
+      "Telugu","Thai","Turkish","Ukrainian","Urdu","Vietnamese","Xhosa"
+    ];
+
+    // Populate language dropdowns
+    for (const lang of LANGS) {
+      inLangSelect.add(new Option(lang, lang));
+      outLangSelect.add(new Option(lang, lang));
     }
 
-    log("Connecting to Space…");
-    app = await Client.connect(SPACE);
-    log("Connected");
+    async function log(msg) {
+      console.log(msg);
+      statusEl.textContent += "\n" + msg;
+    }
 
-    btn.onclick = async () => {
+    statusEl.textContent = "Connecting to Space…";
+    app = await Client.connect(SPACE);
+    statusEl.textContent = "Connected";
+
+    recordBtn.onclick = async () => {
       if (!recording) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         recorder = new MediaRecorder(stream);
         chunks = [];
 
         recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = run;
+        recorder.onstop = runTranslation;
 
         recorder.start();
         recording = true;
-        btn.textContent = "Stop Recording";
-        btn.classList.add("recording");
-        log("Recording…");
+        recordBtn.textContent = "Stop Recording";
+        recordBtn.classList.add("recording");
+        statusEl.textContent = "Recording…";
       } else {
         recorder.stop();
         recording = false;
-        btn.textContent = "Start Recording";
-        btn.classList.remove("recording");
-        log("Processing…");
+        recordBtn.textContent = "Start Recording";
+        recordBtn.classList.remove("recording");
+        statusEl.textContent = "Processing…";
       }
     };
 
-    async function run() {
-      try {
-        const blob = new Blob(chunks, { type: "audio/webm" });
+    async function runTranslation() {
+      const blob = new Blob(chunks, { type: "audio/wav" });
 
-        log("Sending audio to Space…");
-        const res = await app.predict(API_NAME, [blob, lang.value]);
+      statusEl.textContent = "Sending audio…";
+      const res = await app.predict(FN_INDEX, [
+        blob,
+        inLangSelect.value,
+        outLangSelect.value
+      ]);
 
-        console.log("Result:", res);
+      console.log("Raw response:", res);
 
-        const [transcription, translation, audio] = res.data;
+      const [transcript, translation, audioUrl, debugText] = res.data;
 
-        output.textContent =
-          "Transcription:\n" + transcription +
-          "\n\nTranslation:\n" + translation;
+      outputEl.textContent =
+        `Transcription:\n${transcript}\n\nTranslation:\n${translation}`;
 
-        audioEl.src = audio;
+      debugEl.textContent = `Debug message:\n${debugText}`;
+
+      if (audioUrl) {
+        audioEl.src = audioUrl;
         audioEl.play();
-
-        log("Done");
-      } catch (err) {
-        console.error(err);
-        log("ERROR: " + err.message);
       }
+
+      statusEl.textContent = "Done";
     }
   </script>
 </body>
