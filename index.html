@@ -7,191 +7,150 @@
 
   <style>
     body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: system-ui, sans-serif;
       background: #0f172a;
       color: #e5e7eb;
       display: flex;
       justify-content: center;
       padding: 2rem;
     }
-
     .app {
-      max-width: 520px;
+      max-width: 560px;
       width: 100%;
       background: #020617;
       border-radius: 14px;
-      padding: 1.75rem;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+      padding: 1.5rem;
     }
-
-    h1 {
-      font-size: 1.35rem;
-      margin-bottom: 0.25rem;
-    }
-
-    .subtitle {
-      font-size: 0.9rem;
-      color: #94a3b8;
-      margin-bottom: 1rem;
-    }
-
     select, button {
       width: 100%;
-      padding: 0.75rem;
-      margin-top: 0.75rem;
-      border-radius: 10px;
-      border: none;
+      padding: 0.7rem;
+      margin-top: 0.6rem;
+      border-radius: 8px;
       font-size: 1rem;
     }
-
     select {
       background: #020617;
       color: #e5e7eb;
       border: 1px solid #334155;
     }
-
     button {
       background: #4f46e5;
       color: white;
-      cursor: pointer;
-      font-weight: 500;
+      border: none;
     }
-
     button.recording {
       background: #dc2626;
     }
-
-    .status {
-      margin-top: 0.75rem;
-      font-size: 0.85rem;
-      color: #94a3b8;
-    }
-
-    .output {
-      margin-top: 1.25rem;
+    .box {
+      margin-top: 1rem;
       background: #020617;
       border: 1px solid #334155;
-      border-radius: 10px;
-      padding: 0.9rem;
-      font-size: 0.85rem;
+      border-radius: 8px;
+      padding: 0.75rem;
       white-space: pre-wrap;
-      line-height: 1.45;
+      font-size: 0.85rem;
     }
-
     audio {
-      margin-top: 1rem;
+      margin-top: 0.75rem;
       width: 100%;
-    }
-
-    footer {
-      margin-top: 1.25rem;
-      font-size: 0.75rem;
-      color: #64748b;
-      text-align: center;
     }
   </style>
 </head>
 
 <body>
   <div class="app">
-    <h1>🗣️ Speech-to-Speech Translator</h1>
-    <div class="subtitle">
-      Whisper → mBART-50 → gTTS · 50 languages
-    </div>
+    <h2>🗣️ Speech-to-Speech Translator</h2>
 
     <select id="language">
       <option value="en">English</option>
       <option value="es">Spanish</option>
       <option value="fr">French</option>
       <option value="de">German</option>
-      <option value="it">Italian</option>
-      <option value="pt">Portuguese</option>
-      <option value="ru">Russian</option>
       <option value="ar">Arabic</option>
       <option value="hi">Hindi</option>
       <option value="zh">Chinese</option>
       <option value="ja">Japanese</option>
-      <option value="ko">Korean</option>
-      <option value="vi">Vietnamese</option>
-      <option value="tr">Turkish</option>
-      <option value="pl">Polish</option>
     </select>
 
     <button id="recordBtn">Start Recording</button>
-    <div class="status" id="status">Idle</div>
 
-    <div class="output" id="textOutput"></div>
-    <audio id="audioOutput" controls></audio>
+    <div class="box" id="status">Status: initializing…</div>
+    <div class="box" id="output">Output will appear here</div>
 
-    <footer>
-      Powered by Hugging Face Spaces · Public demo
-    </footer>
+    <audio id="audio" controls></audio>
   </div>
 
-  <!-- ✅ Gradio Client (browser-safe) -->
   <script type="module">
     import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
 
-    const SPACE_NAME =
-      "Jchamo/speech-to-speech-translation-50-languages";
+    const SPACE = "Jchamo/speech-to-speech-translation-50-languages";
 
-    const recordBtn = document.getElementById("recordBtn");
-    const statusEl = document.getElementById("status");
-    const textOutput = document.getElementById("textOutput");
-    const audioOutput = document.getElementById("audioOutput");
-    const languageSelect = document.getElementById("language");
+    // 🔴 IMPORTANT: change this if your Space uses a different api_name
+    const API_NAME = "/predict";
 
-    let app;
-    let mediaRecorder;
-    let audioChunks = [];
-    let recording = false;
+    const status = document.getElementById("status");
+    const output = document.getElementById("output");
+    const audioEl = document.getElementById("audio");
+    const lang = document.getElementById("language");
+    const btn = document.getElementById("recordBtn");
 
-    statusEl.textContent = "Connecting to Hugging Face Space…";
+    let app, recorder, chunks = [], recording = false;
 
-    app = await Client.connect(SPACE_NAME);
+    function log(msg) {
+      console.log(msg);
+      status.textContent += "\n" + msg;
+    }
 
-    statusEl.textContent = "Ready";
+    log("Connecting to Space…");
+    app = await Client.connect(SPACE);
+    log("Connected");
 
-    recordBtn.onclick = async () => {
+    btn.onclick = async () => {
       if (!recording) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
+        recorder = new MediaRecorder(stream);
+        chunks = [];
 
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        mediaRecorder.onstop = runInference;
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = run;
 
-        mediaRecorder.start();
+        recorder.start();
         recording = true;
-        recordBtn.textContent = "Stop Recording";
-        recordBtn.classList.add("recording");
-        statusEl.textContent = "Recording…";
+        btn.textContent = "Stop Recording";
+        btn.classList.add("recording");
+        log("Recording…");
       } else {
-        mediaRecorder.stop();
+        recorder.stop();
         recording = false;
-        recordBtn.textContent = "Start Recording";
-        recordBtn.classList.remove("recording");
-        statusEl.textContent = "Processing…";
+        btn.textContent = "Start Recording";
+        btn.classList.remove("recording");
+        log("Processing…");
       }
     };
 
-    async function runInference() {
-      const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+    async function run() {
+      try {
+        const blob = new Blob(chunks, { type: "audio/webm" });
 
-      const result = await app.predict("/predict", [
-        audioBlob,
-        languageSelect.value
-      ]);
+        log("Sending audio to Space…");
+        const res = await app.predict(API_NAME, [blob, lang.value]);
 
-      const [transcription, translation, audioFile] = result.data;
+        console.log("Result:", res);
 
-      textOutput.textContent =
-        `Transcription:\n${transcription}\n\nTranslation:\n${translation}`;
+        const [transcription, translation, audio] = res.data;
 
-      audioOutput.src = audioFile;
-      audioOutput.play();
+        output.textContent =
+          "Transcription:\n" + transcription +
+          "\n\nTranslation:\n" + translation;
 
-      statusEl.textContent = "Done";
+        audioEl.src = audio;
+        audioEl.play();
+
+        log("Done");
+      } catch (err) {
+        console.error(err);
+        log("ERROR: " + err.message);
+      }
     }
   </script>
 </body>
