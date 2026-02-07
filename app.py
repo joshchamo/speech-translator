@@ -5,23 +5,22 @@ import sys
 import requests
 from huggingface_hub import InferenceClient
 
-# Unbuffered logging for real-time debugging
+# Ensure real-time logging
 sys.stdout.reconfigure(line_buffering=True)
 
-print("--- INITIALIZING VOXTRAL V10 ---", flush=True)
+print("--- INITIALIZING VOXTRAL V11 ---", flush=True)
 
 API_TOKEN = os.getenv("HF_TOKEN")
 client = InferenceClient(token=API_TOKEN)
 
-# The correct 2026 router path
+# Unified Router Endpoint
 ROUTER_BASE = "https://router.huggingface.co/hf-inference/models"
 
 STT_MODEL = "openai/whisper-large-v3-turbo"
 TRANSLATE_MODEL = "facebook/mbart-large-50-many-to-many-mmt"
-# THE NEW UNIFIED REPO (Replacing the 1100+ separate repos)
-TTS_MODEL_BASE = "facebook/mms-tts"
+TTS_MODEL = "facebook/mms-tts"
 
-# ISO 639-3 codes for MMS
+# Updated Mapping
 LANG_DATA = {
     "English": {"mbart": "en_XX", "mms": "eng"}, 
     "Spanish": {"mbart": "es_XX", "mms": "spa"}, 
@@ -36,12 +35,12 @@ def translate_and_speak(audio_path, in_lang, out_lang):
     
     try:
         # 1. Transcription
-        print("DEBUG: STT start...", flush=True)
+        print("DEBUG: Calling STT...", flush=True)
         asr_res = client.automatic_speech_recognition(audio_path, model=STT_MODEL)
         transcript = asr_res.text
 
         # 2. Translation
-        print("DEBUG: Translation start...", flush=True)
+        print("DEBUG: Calling Translation...", flush=True)
         translate_url = f"{ROUTER_BASE}/{TRANSLATE_MODEL}"
         tr_payload = {
             "inputs": transcript,
@@ -53,42 +52,49 @@ def translate_and_speak(audio_path, in_lang, out_lang):
         tr_resp = requests.post(translate_url, headers=headers, json=tr_payload, timeout=30)
         translation = tr_resp.json()[0]['translation_text']
 
-        # 3. TTS with Language Adapter (The fix for your 404)
-        print(f"DEBUG: TTS start for {out_lang}...", flush=True)
+        # 3. TTS (Using raw request to pass 'language' parameter)
+        print(f"DEBUG: Calling TTS for {out_lang}...", flush=True)
+        tts_url = f"{ROUTER_BASE}/{TTS_MODEL}"
         mms_code = LANG_DATA[out_lang]["mms"]
         
-        # We call the BASE model and pass the language as a parameter
-        # This is how the Inference API handles the 1100+ MMS languages now
-        audio_content = client.text_to_speech(
-            translation, 
-            model=TTS_MODEL_BASE,
-            parameters={"language": mms_code}
-        )
+        tts_payload = {
+            "inputs": translation,
+            "parameters": {"language": mms_code}
+        }
         
+        tts_resp = requests.post(tts_url, headers=headers, json=tts_payload, timeout=30)
+        
+        if tts_resp.status_code != 200:
+            raise Exception(f"TTS Router Error {tts_resp.status_code}: {tts_resp.text}")
+            
         out_path = "output.wav"
         with open(out_path, "wb") as f:
-            f.write(audio_content)
+            f.write(tts_resp.content)
             
         return transcript, translation, out_path
     
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}", flush=True)
-        return f"System Error: {str(e)}", "Please check language codes", None
+        return f"Error: {str(e)}", "Please check logs", None
 
 # --- UI Setup ---
 with gr.Blocks() as demo:
-    gr.Markdown("# 🎙️ VOXTRAL v10: Unified TTS Repo")
+    gr.Markdown("# 🎙️ VOXTRAL v11 (Final Stability)")
     
     with gr.Row():
-        audio_in = gr.Audio(sources="microphone", type="filepath", label="Speak")
+        audio_in = gr.Audio(sources="microphone", type="filepath", label="Record")
         in_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="English", label="From")
         out_lang = gr.Dropdown(choices=list(LANG_DATA.keys()), value="French", label="To")
     
     txt_out = gr.Textbox(label="Transcript")
     trn_out = gr.Textbox(label="Translation")
-    audio_out = gr.Audio(label="Spoken Result", autoplay=True)
+    audio_out = gr.Audio(label="Voice Result", autoplay=True)
     
-    audio_in.stop_recording(translate_and_speak, [audio_in, in_lang, out_lang], [txt_out, trn_out, audio_out])
+    audio_in.stop_recording(
+        translate_and_speak, 
+        inputs=[audio_in, in_lang, out_lang], 
+        outputs=[txt_out, trn_out, audio_out]
+    )
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())
