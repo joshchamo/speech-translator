@@ -29,16 +29,6 @@ The application follows a linear pipeline to process your voice:
 - **Inference:** [Hugging Face Inference API](https://huggingface.co/docs/api-inference/index)
 - **Audio Engine:** gTTS (Google Text-to-Speech)
 
-models:
-  - openai/whisper-large-v3-turbo
-  - facebook/mbart-large-50-many-to-many-mmt
-tags:
-  - speech-to-speech
-  - translation
-  - automatic-speech-recognition
-  - audio-to-audio
-  - whisper
-  - mbart
 
 ## 📖 Supported Languages
 This demo supports 50 languages, including Arabic, Chinese, English, French, German, Hindi, Japanese, Spanish, Vietnamese, and many more.
