@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Speech-to-Speech Translation (50 Languages)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .app {
+      max-width: 480px;
+      width: 100%;
+      background: #020617;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+
+    button, select {
+      width: 100%;
+      padding: 0.75rem;
+      margin-top: 1rem;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+    }
+
+    button {
+      background: #4f46e5;
+      color: white;
+      cursor: pointer;
+    }
+
+    button.recording {
+      background: #dc2626;
+    }
+
+    select {
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+    }
+
+    .output {
+      margin-top: 1.25rem;
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+
+    audio {
+      margin-top: 1rem;
+      width: 100%;
+    }
+
+    .status {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <h1>🗣️ Speech-to-Speech Translator</h1>
+    <p>Whisper → mBART-50 → gTTS</p>
+
+    <select id="language">
+      <option value="en">English</option>
+      <option value="es">Spanish</option>
+      <option value="fr">French</option>
+      <option value="de">German</option>
+      <option value="zh">Chinese</option>
+      <option value="ja">Japanese</option>
+      <option value="ko">Korean</option>
+      <option value="ar">Arabic</option>
+      <option value="hi">Hindi</option>
+      <option value="pt">Portuguese</option>
+      <!-- add more if you want -->
+    </select>
+
+    <button id="recordBtn">Start Recording</button>
+
+    <div class="status" id="status">Idle</div>
+
+    <div class="output" id="textOutput"></div>
+
+    <audio id="audioOutput" controls></audio>
+  </div>
+
+  <script>
+    const SPACE_API =
+      "https://huggingface.co/spaces/Jchamo/speech-to-speech-translation-50-languages/api/predict/";
+
+    let mediaRecorder;
+    let audioChunks = [];
+    let recording = false;
+
+    const recordBtn = document.getElementById("recordBtn");
+    const statusEl = document.getElementById("status");
+    const textOutput = document.getElementById("textOutput");
+    const audioOutput = document.getElementById("audioOutput");
+    const languageSelect = document.getElementById("language");
+
+    recordBtn.onclick = async () => {
+      if (!recording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = sendAudio;
+
+        mediaRecorder.start();
+        recording = true;
+        recordBtn.textContent = "Stop Recording";
+        recordBtn.classList.add("recording");
+        statusEl.textContent = "Recording…";
+      } else {
+        mediaRecorder.stop();
+        recording = false;
+        recordBtn.textContent = "Start Recording";
+        recordBtn.classList.remove("recording");
+        statusEl.textContent = "Processing…";
+      }
+    };
+
+    async function sendAudio() {
+      const blob = new Blob(audioChunks, { type: "audio/webm" });
+      const base64 = await blobToBase64(blob);
+
+      const response = await fetch(SPACE_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [base64, languageSelect.value]
+        })
+      });
+
+      const result = await response.json();
+      const [transcription, translation, audioBase64] = result.data;
+
+      textOutput.textContent =
+        `Transcription:\n${transcription}\n\nTranslation:\n${translation}`;
+
+      audioOutput.src = `data:audio/mp3;base64,${audioBase64}`;
+      audioOutput.play();
+
+      statusEl.textContent = "Done";
+    }
+
+    function blobToBase64(blob) {
+      return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(",")[1]);
+        reader.readAsDataURL(blob);
+      });
+    }
+  </script>
+</body>
+</html>
