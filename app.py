@@ -3,17 +3,18 @@ import requests
 import os
 import sys
 from gtts import gTTS
+import base64
 
-# 1. Logging & Config
+# --- 1. Logging & Config ---
 sys.stdout.reconfigure(line_buffering=True)
 API_TOKEN = os.getenv("HF_TOKEN")
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 
-# Models
+# --- 2. Models ---
 WHISPER_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
 TRANSLATE_URL = "https://router.huggingface.co/hf-inference/models/facebook/mbart-large-50-many-to-many-mmt"
 
-# 2. FULL 50-Language Mapping
+# --- 3. Language Mapping ---
 LANG_CODES = {
     "Afrikaans": {"mbart": "af_ZA", "gtts": "af"},
     "Arabic": {"mbart": "ar_AR", "gtts": "ar"},
@@ -69,6 +70,7 @@ LANG_CODES = {
     "Xhosa": {"mbart": "xh_ZA", "gtts": "xh"}
 }
 
+# --- 4. API Helper ---
 def query_api(url, payload, is_audio_in=False):
     h = headers.copy()
     try:
@@ -79,38 +81,45 @@ def query_api(url, payload, is_audio_in=False):
             response = requests.post(url, headers=h, data=data, timeout=60)
         else:
             response = requests.post(url, headers=h, json=payload, timeout=30)
-            
         if response.status_code != 200:
             return {"error": f"API {response.status_code}", "text": response.text}
         return response.json()
     except Exception as e:
         return {"error": "Connection Error", "text": str(e)}
 
-def text_to_speech_gtts(text, language):
-    if not text: return None, "No text to speak."
+# --- 5. TTS Helper ---
+def text_to_speech_gtts(text, language, as_base64=False):
+    if not text: 
+        return None, "No text to speak."
     try:
         lang_code = LANG_CODES.get(language, {}).get("gtts", "en")
-        tts = gTTS(text=text, lang=lang_code, slow=False)
         filename = f"output_{lang_code}.mp3"
+        tts = gTTS(text=text, lang=lang_code, slow=False)
         tts.save(filename)
-        return filename, "Audio generated successfully."
+
+        if as_base64:
+            with open(filename, "rb") as f:
+                audio_bytes = f.read()
+            return "data:audio/mpeg;base64," + base64.b64encode(audio_bytes).decode("utf-8"), "Audio generated successfully."
+        else:
+            return filename, "Audio generated successfully."
     except Exception as e:
         return None, f"TTS Error: {str(e)}"
 
+# --- 6. Pipeline ---
 def run_pipeline(audio_path, input_lang, target_lang):
     if not audio_path: 
         return "", "", None, "Please record audio first."
 
-    # 1. Transcribe
+    # 1. ASR
     asr_data = query_api(WHISPER_URL, audio_path, is_audio_in=True)
     if "error" in asr_data:
-        return "ASR Failed", "", None, f"Whisper Error: {asr_data.get('text', 'Unknown error')}"
-    
-    transcript = asr_data.get("text", "")
+        return "ASR Failed", "", None, f"Whisper Error: {asr_data.get('text','Unknown error')}"
+    transcript = asr_data.get("text","")
     if not transcript:
         return "No speech detected", "", None, "Whisper returned empty text."
 
-    # 2. Translate
+    # 2. Translation
     tr_payload = {
         "inputs": transcript,
         "parameters": {
@@ -119,21 +128,20 @@ def run_pipeline(audio_path, input_lang, target_lang):
         }
     }
     tr_data = query_api(TRANSLATE_URL, tr_payload)
-    
     if isinstance(tr_data, dict) and "error" in tr_data:
-         return transcript, "Translation Failed", None, f"mBART Error: {tr_data.get('text', 'Unknown error')}"
-         
+        return transcript, "Translation Failed", None, f"mBART Error: {tr_data.get('text','Unknown error')}"
     try:
         translation = tr_data[0]['translation_text']
     except:
         return transcript, "Translation Parsing Failed", None, str(tr_data)
 
-    # 3. Speak
-    audio_path, tts_msg = text_to_speech_gtts(translation, target_lang)
-    
-    return transcript, translation, audio_path, f"Done. {tts_msg}"
+    # 3. TTS
+    # Encode base64 if called externally
+    audio_out, tts_msg = text_to_speech_gtts(translation, target_lang, as_base64=True)
 
-# --- UI Setup ---
+    return transcript, translation, audio_out, f"Done. {tts_msg}"
+
+# --- 7. Gradio UI ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# 🌍 Multilingual Speech Translator with Whisper + mBART-50 + gTTS")
     
@@ -153,13 +161,12 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     with gr.Accordion("Debug Logs", open=False):
         debug_out = gr.Textbox(label="System Status")
 
-    # Pipeline Triggers
+    # Pipeline triggers
     audio_in.stop_recording(
-        run_pipeline, 
-        inputs=[audio_in, in_lang, out_lang], 
+        run_pipeline,
+        inputs=[audio_in, in_lang, out_lang],
         outputs=[txt_out, trn_out, audio_out, debug_out]
     )
-    
     btn_run.click(
         run_pipeline,
         inputs=[audio_in, in_lang, out_lang],
