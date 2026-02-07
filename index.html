@@ -152,17 +152,34 @@
 
       console.log("Raw response:", res);
 
-      const [transcript, translation, audioUrl, debugText] = res.data;
+    const [transcript, translation, audioOut, debugText] = res.data;
 
       outputEl.textContent =
         `Transcription:\n${transcript}\n\nTranslation:\n${translation}`;
-
+      
       debugEl.textContent = `Debug message:\n${debugText}`;
-
-      if (audioUrl) {
-        audioEl.src = audioUrl;
-        audioEl.play();
+      
+      if (audioOut) {
+        let src = null;
+      
+        // Case 1: filepath / blob URL
+        if (typeof audioOut === "string") {
+          src = audioOut;
+        }
+      
+        // Case 2: Gradio audio object
+        else if (audioOut.data) {
+          src = audioOut.data;
+        }
+      
+        if (src) {
+          audioEl.src = src;
+          audioEl.disabled = false;
+          audioEl.load();
+          audioEl.play();
+        }
       }
+ 
 
       statusEl.textContent = "Done";
     }
