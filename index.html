@@ -1,195 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Speech-to-Speech Translator (50 Languages)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #0f172a;
-      color: #e5e7eb;
-      display: flex;
-      justify-content: center;
-      padding: 2rem;
-    }
-    .app {
-      max-width: 600px;
-      width: 100%;
-      background: #020617;
-      border-radius: 12px;
-      padding: 1.75rem;
-    }
-    select, button {
-      width: 100%;
-      padding: 0.8rem;
-      margin-top: 0.8rem;
-      border-radius: 8px;
-      font-size: 1rem;
-    }
-    select {
-      background: #020617;
-      color: #e5e7eb;
-      border: 1px solid #334155;
-    }
-    button.recording {
-      background: #dc2626;
-      color: white;
-    }
-    button {
-      background: #4f46e5;
-      color: white;
-      border: none;
-    }
-    .box {
-      margin-top: 1rem;
-      background: #020617;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 0.85rem;
-      white-space: pre-wrap;
-    }
-    audio {
-      margin-top: 1rem;
-      width: 100%;
-    }
-    label {
-      margin-top: 0.8rem;
-      display: block;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>50-Language Speech Translator</title>
+<style>
+  body { font-family: sans-serif; margin: 2rem; }
+  h1 { font-size: 1.8rem; margin-bottom: 1rem; }
+  label { font-weight: bold; margin-top: 1rem; display: block; }
+  button { margin-top: 1rem; padding: 0.5rem 1rem; font-size: 1rem; }
+  select, textarea { width: 100%; margin-top: 0.5rem; padding: 0.4rem; font-size: 1rem; }
+  audio { margin-top: 1rem; width: 100%; }
+</style>
 </head>
-
 <body>
-  <div class="app">
-    <h2>🗣️ Speech-to-Speech Translator</h2>
 
-    <label for="inLang">Input Language</label>
-    <select id="inLang"></select>
+<h1>🌍 50-Language Speech Translator</h1>
 
-    <label for="outLang">Target Language</label>
-    <select id="outLang"></select>
+<label for="inputLang">Input Language:</label>
+<select id="inputLang">
+  <option>English</option>
+  <option>Spanish</option>
+  <option>French</option>
+  <option>German</option>
+  <option>Japanese</option>
+  <option>Chinese</option>
+  <!-- Add remaining languages here -->
+</select>
 
-    <button id="recordBtn">Start Recording</button>
+<label for="targetLang">Target Language:</label>
+<select id="targetLang">
+  <option>Spanish</option>
+  <option>English</option>
+  <option>French</option>
+  <option>German</option>
+  <option>Japanese</option>
+  <option>Chinese</option>
+  <!-- Add remaining languages here -->
+</select>
 
-    <div class="box" id="status">Status: idle</div>
-    <div class="box" id="output"></div>
-    <div class="box" id="debug"></div>
+<label>Record your speech:</label>
+<button id="recordBtn">Start Recording</button>
+<button id="stopBtn" disabled>Stop Recording</button>
 
-    <label>Translated Speech</label>
-    <audio id="audio" controls preload="auto" disabled></audio>
-  </div>
+<label>Transcription:</label>
+<textarea id="transcript" rows="3" readonly></textarea>
 
-  <script type="module">
-    import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
+<label>Translation:</label>
+<textarea id="translation" rows="3" readonly></textarea>
 
-    const SPACE = "Jchamo/speech-to-speech-translation-50-languages";
-    const FN_INDEX = 0;
+<label>Spoken Translation:</label>
+<audio id="audioOut" controls disabled></audio>
 
-    const statusEl = document.getElementById("status");
-    const outputEl = document.getElementById("output");
-    const debugEl = document.getElementById("debug");
-    const audioEl = document.getElementById("audio");
+<label>Debug:</label>
+<textarea id="debug" rows="3" readonly></textarea>
 
-    const inLangSelect = document.getElementById("inLang");
-    const outLangSelect = document.getElementById("outLang");
-    const recordBtn = document.getElementById("recordBtn");
+<script src="https://cdn.jsdelivr.net/npm/@gradio/client@latest/dist/gradio.min.js"></script>
+<script>
+const spaceUrl = "https://jchamo-speech-to-speech-translation-50-languages.hf.space";
+const client = new gradio.Client(spaceUrl);
 
-    let app, recorder, chunks = [], recording = false;
+let recorder, audioChunks = [];
 
-    // 50-language list (exact match to app.py)
-    const LANGS = [
-      "Afrikaans","Arabic","Azerbaijani","Bengali","Burmese","Chinese",
-      "Croatian","Czech","Dutch","English","Estonian","Finnish","French",
-      "Galician","Georgian","German","Gujarati","Hebrew","Hindi",
-      "Indonesian","Italian","Japanese","Kazakh","Khmer","Korean",
-      "Latvian","Lithuanian","Macedonian","Malayalam","Marathi","Mongolian",
-      "Nepali","Pashto","Persian","Polish","Portuguese","Romanian","Russian",
-      "Sinhala","Slovene","Spanish","Swahili","Swedish","Tagalog","Tamil",
-      "Telugu","Thai","Turkish","Ukrainian","Urdu","Vietnamese","Xhosa"
-    ];
+const recordBtn = document.getElementById("recordBtn");
+const stopBtn = document.getElementById("stopBtn");
+const inputLang = document.getElementById("inputLang");
+const targetLang = document.getElementById("targetLang");
+const transcriptBox = document.getElementById("transcript");
+const translationBox = document.getElementById("translation");
+const audioOut = document.getElementById("audioOut");
+const debugBox = document.getElementById("debug");
 
-    // Populate dropdowns
-    for (const lang of LANGS) {
-      inLangSelect.add(new Option(lang, lang));
-      outLangSelect.add(new Option(lang, lang));
-    }
+recordBtn.onclick = async () => {
+  audioChunks = [];
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => audioChunks.push(e.data);
+  recorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: "audio/wav" });
+    const file = new File([blob], "input.wav");
 
-    async function log(msg) {
-      console.log(msg);
-      statusEl.textContent += "\n" + msg;
-    }
+    debugBox.value = "Processing…";
 
-    statusEl.textContent = "Connecting to Space…";
-    app = await Client.connect(SPACE);
-    statusEl.textContent = "Connected";
+    try {
+      // Call HF Space function
+      const result = await client.call("run_pipeline", [file, inputLang.value, targetLang.value]);
 
-    recordBtn.onclick = async () => {
-      if (!recording) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        recorder = new MediaRecorder(stream);
-        chunks = [];
-
-        recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = runTranslation;
-
-        recorder.start();
-        recording = true;
-        recordBtn.textContent = "Stop Recording";
-        recordBtn.classList.add("recording");
-        statusEl.textContent = "Recording…";
+      transcriptBox.value = result[0] || "";
+      translationBox.value = result[1] || "";
+      
+      const audioBase64 = result[2];
+      if(audioBase64){
+        audioOut.src = audioBase64;
+        audioOut.disabled = false;
+        audioOut.load();
       } else {
-        recorder.stop();
-        recording = false;
-        recordBtn.textContent = "Start Recording";
-        recordBtn.classList.remove("recording");
-        statusEl.textContent = "Processing…";
+        audioOut.src = "";
+        audioOut.disabled = true;
       }
-    };
 
-    async function runTranslation() {
-      const blob = new Blob(chunks, { type: "audio/wav" });
-      statusEl.textContent = "Sending audio…";
-
-      try {
-        const res = await app.predict(FN_INDEX, [
-          blob,
-          inLangSelect.value,
-          outLangSelect.value
-        ]);
-
-        console.log("Raw response:", res);
-
-        const [transcript, translation, audioOut, debugText] = res.data;
-
-        outputEl.textContent =
-          `Transcription:\n${transcript}\n\nTranslation:\n${translation}`;
-
-        debugEl.textContent = `Debug message:\n${debugText}`;
-
-        // Handle audio correctly
-        let audioSrc = null;
-        if (audioOut) {
-          if (typeof audioOut === "string") audioSrc = audioOut;
-          else if (audioOut.data) audioSrc = audioOut.data;
-
-          if (audioSrc) {
-            audioEl.src = audioSrc;
-            audioEl.disabled = false;
-            audioEl.load();
-            audioEl.play();
-          }
-        }
-
-        statusEl.textContent = "Done";
-
-      } catch (err) {
-        console.error("FULL ERROR OBJECT:", err);
-        statusEl.textContent = "Error occurred. See console.";
-        debugEl.textContent = JSON.stringify(err, null, 2);
-      }
+      debugBox.value = result[3] || "Done";
+    } catch(err){
+      console.error(err);
+      debugBox.value = "Error: " + err;
     }
-  </script>
+  };
+
+  recorder.start();
+  recordBtn.disabled = true;
+  stopBtn.disabled = false;
+};
+
+stopBtn.onclick = () => {
+  recorder.stop();
+  recordBtn.disabled = false;
+  stopBtn.disabled = true;
+};
+</script>
+
 </body>
 </html>
