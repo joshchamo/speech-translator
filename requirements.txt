@@ -1,2 +1,57 @@
-gradio
-GTTS
+---
+title: 50-Language Speech-to-Speech Translator
+emoji: 🗣️
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: "4.44.1"
+app_file: app.py
+pinned: false
+license: mit
+short_description: Speech-to-speech translation across 50 languages using Whisper, mBART, and gTTS.
+---
+
+# 🌍 50-Language Speech-to-Speech Translator
+
+This is a multimodal demo that transcribes, translates, and voices speech by chaining multiple open models together.  
+It provides a simple end-to-end speech translator experience across 50 languages.
+
+---
+
+## 🚀 How It Works
+
+The application follows a linear processing pipeline:
+
+1. **Automatic Speech Recognition (ASR)**  
+   Uses **Whisper (Large v3 Turbo)** to transcribe spoken audio into text.
+
+2. **Neural Machine Translation (NMT)**  
+   Uses **mBART-50** to translate the transcribed text into one of 50 supported languages.
+
+3. **Text-to-Speech (TTS)**  
+   Uses **gTTS (Google Text-to-Speech)** to synthesize speech in the target language.
+
+---
+
+## 🛠️ Tech Stack
+
+- **UI:** Gradio  
+- **ASR:** OpenAI Whisper  
+- **Translation:** Facebook mBART-50  
+- **Text-to-Speech:** gTTS  
+- **Hosting:** Hugging Face Spaces
+
+---
+
+## 🌐 Supported Languages
+
+The demo supports 50 languages, including:
+
+Arabic, Chinese, English, French, German, Hindi, Japanese, Spanish, Vietnamese, and many more.
+
+---
+
+## ⚠️ Notes
+
+- Models were chosen to balance **language coverage**, **latency**, and **availability** on Hugging Face Spaces.
+- Larger models that frequently sleep were avoided to ensure consistent demo uptime.
