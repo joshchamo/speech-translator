@@ -1,10 +1,10 @@
+gradio
+GTTS
 ---
 title: 50-Language Speech-to-Speech Translator using Whisper & mBART.
 emoji: 🗣️
 colorFrom: blue
 colorTo: indigo
-gradio
-GTTS
 app_file: app.py
 pinned: false
 license: mit
