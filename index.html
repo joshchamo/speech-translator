@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>50-Language Speech Translator</title>
 <style>
-  body { font-family: sans-serif; margin: 2rem; }
-  h1 { font-size: 1.8rem; margin-bottom: 1rem; }
-  label { font-weight: bold; margin-top: 1rem; display: block; }
-  button { margin-top: 1rem; padding: 0.5rem 1rem; font-size: 1rem; }
-  select, textarea { width: 100%; margin-top: 0.5rem; padding: 0.4rem; font-size: 1rem; }
-  audio { margin-top: 1rem; width: 100%; }
+body { font-family: sans-serif; margin: 2rem; }
+h1 { font-size: 1.8rem; margin-bottom: 1rem; }
+label { font-weight: bold; margin-top: 1rem; display: block; }
+button { margin-top: 1rem; padding: 0.5rem 1rem; font-size: 1rem; }
+select, textarea { width: 100%; margin-top: 0.5rem; padding: 0.4rem; font-size: 1rem; }
+audio { margin-top: 1rem; width: 100%; }
 </style>
 </head>
 <body>
@@ -25,7 +25,6 @@
   <option>German</option>
   <option>Japanese</option>
   <option>Chinese</option>
-  <!-- Add remaining languages here -->
 </select>
 
 <label for="targetLang">Target Language:</label>
@@ -36,7 +35,6 @@
   <option>German</option>
   <option>Japanese</option>
   <option>Chinese</option>
-  <!-- Add remaining languages here -->
 </select>
 
 <label>Record your speech:</label>
@@ -71,51 +69,66 @@ const translationBox = document.getElementById("translation");
 const audioOut = document.getElementById("audioOut");
 const debugBox = document.getElementById("debug");
 
-recordBtn.onclick = async () => {
-  audioChunks = [];
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  recorder = new MediaRecorder(stream);
-  recorder.ondataavailable = e => audioChunks.push(e.data);
-  recorder.onstop = async () => {
-    const blob = new Blob(audioChunks, { type: "audio/wav" });
-    const file = new File([blob], "input.wav");
-
-    debugBox.value = "Processing…";
-
-    try {
-      // Call HF Space function
-      const result = await client.call("run_pipeline", [file, inputLang.value, targetLang.value]);
-
-      transcriptBox.value = result[0] || "";
-      translationBox.value = result[1] || "";
-      
-      const audioBase64 = result[2];
-      if(audioBase64){
-        audioOut.src = audioBase64;
-        audioOut.disabled = false;
-        audioOut.load();
-      } else {
-        audioOut.src = "";
-        audioOut.disabled = true;
-      }
-
-      debugBox.value = result[3] || "Done";
-    } catch(err){
-      console.error(err);
-      debugBox.value = "Error: " + err;
-    }
-  };
-
-  recorder.start();
+// Start Recording safely
+recordBtn.addEventListener("click", async () => {
   recordBtn.disabled = true;
-  stopBtn.disabled = false;
-};
+  debugBox.value = "Initializing microphone…";
 
-stopBtn.onclick = () => {
-  recorder.stop();
-  recordBtn.disabled = false;
-  stopBtn.disabled = true;
-};
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    recorder = new MediaRecorder(stream);
+
+    recorder.ondataavailable = e => audioChunks.push(e.data);
+
+    recorder.onstop = async () => {
+      const blob = new Blob(audioChunks, { type: "audio/wav" });
+      const file = new File([blob], "input.wav");
+
+      debugBox.value = "Processing…";
+
+      try {
+        const result = await client.call("run_pipeline", [file, inputLang.value, targetLang.value]);
+
+        transcriptBox.value = result[0] || "";
+        translationBox.value = result[1] || "";
+
+        const audioBase64 = result[2];
+        if(audioBase64){
+          audioOut.src = audioBase64;
+          audioOut.disabled = false;
+          audioOut.load();
+        } else {
+          audioOut.src = "";
+          audioOut.disabled = true;
+        }
+
+        debugBox.value = result[3] || "Done";
+      } catch(err){
+        console.error(err);
+        debugBox.value = "Error: " + err;
+      }
+    };
+
+    recorder.start();
+    stopBtn.disabled = false;
+    debugBox.value = "Recording…";
+
+  } catch(err) {
+    console.error(err);
+    debugBox.value = "Microphone error: " + err;
+    recordBtn.disabled = false;
+  }
+});
+
+// Stop recording
+stopBtn.addEventListener("click", () => {
+  if(recorder && recorder.state !== "inactive") {
+    recorder.stop();
+    recordBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+});
 </script>
 
 </body>
