@@ -135,7 +135,7 @@ def run_pipeline(audio_path, input_lang, target_lang):
 
 # --- UI Setup ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🌍 VOXTRAL: 50-Language Voice Translator")
+    gr.Markdown("# 🌍 Multilingual Speech Translator with Whisper + mBART-50 + gTTS")
     
     with gr.Row():
         with gr.Column():
