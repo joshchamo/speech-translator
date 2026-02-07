@@ -54,6 +54,10 @@
       margin-top: 1rem;
       width: 100%;
     }
+    label {
+      margin-top: 0.8rem;
+      display: block;
+    }
   </style>
 </head>
 
@@ -61,7 +65,10 @@
   <div class="app">
     <h2>🗣️ Speech-to-Speech Translator</h2>
 
+    <label for="inLang">Input Language</label>
     <select id="inLang"></select>
+
+    <label for="outLang">Target Language</label>
     <select id="outLang"></select>
 
     <button id="recordBtn">Start Recording</button>
@@ -70,7 +77,8 @@
     <div class="box" id="output"></div>
     <div class="box" id="debug"></div>
 
-    <audio id="audio" controls></audio>
+    <label>Translated Speech</label>
+    <audio id="audio" controls preload="auto" disabled></audio>
   </div>
 
   <script type="module">
@@ -90,7 +98,7 @@
 
     let app, recorder, chunks = [], recording = false;
 
-    // Language list — must match your Space exactly
+    // 50-language list (exact match to app.py)
     const LANGS = [
       "Afrikaans","Arabic","Azerbaijani","Bengali","Burmese","Chinese",
       "Croatian","Czech","Dutch","English","Estonian","Finnish","French",
@@ -102,7 +110,7 @@
       "Telugu","Thai","Turkish","Ukrainian","Urdu","Vietnamese","Xhosa"
     ];
 
-    // Populate language dropdowns
+    // Populate dropdowns
     for (const lang of LANGS) {
       inLangSelect.add(new Option(lang, lang));
       outLangSelect.add(new Option(lang, lang));
@@ -142,46 +150,45 @@
 
     async function runTranslation() {
       const blob = new Blob(chunks, { type: "audio/wav" });
-
       statusEl.textContent = "Sending audio…";
-      const res = await app.predict(FN_INDEX, [
-        blob,
-        inLangSelect.value,
-        outLangSelect.value
-      ]);
 
-      console.log("Raw response:", res);
+      try {
+        const res = await app.predict(FN_INDEX, [
+          blob,
+          inLangSelect.value,
+          outLangSelect.value
+        ]);
 
-    const [transcript, translation, audioOut, debugText] = res.data;
+        console.log("Raw response:", res);
 
-      outputEl.textContent =
-        `Transcription:\n${transcript}\n\nTranslation:\n${translation}`;
-      
-      debugEl.textContent = `Debug message:\n${debugText}`;
-      
-      if (audioOut) {
-        let src = null;
-      
-        // Case 1: filepath / blob URL
-        if (typeof audioOut === "string") {
-          src = audioOut;
+        const [transcript, translation, audioOut, debugText] = res.data;
+
+        outputEl.textContent =
+          `Transcription:\n${transcript}\n\nTranslation:\n${translation}`;
+
+        debugEl.textContent = `Debug message:\n${debugText}`;
+
+        // Handle audio correctly
+        let audioSrc = null;
+        if (audioOut) {
+          if (typeof audioOut === "string") audioSrc = audioOut;
+          else if (audioOut.data) audioSrc = audioOut.data;
+
+          if (audioSrc) {
+            audioEl.src = audioSrc;
+            audioEl.disabled = false;
+            audioEl.load();
+            audioEl.play();
+          }
         }
-      
-        // Case 2: Gradio audio object
-        else if (audioOut.data) {
-          src = audioOut.data;
-        }
-      
-        if (src) {
-          audioEl.src = src;
-          audioEl.disabled = false;
-          audioEl.load();
-          audioEl.play();
-        }
+
+        statusEl.textContent = "Done";
+
+      } catch (err) {
+        console.error("FULL ERROR OBJECT:", err);
+        statusEl.textContent = "Error occurred. See console.";
+        debugEl.textContent = JSON.stringify(err, null, 2);
       }
- 
-
-      statusEl.textContent = "Done";
     }
   </script>
 </body>
