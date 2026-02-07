@@ -1,18 +1,19 @@
 ---
-title: 50-Language Speech-to-Speech Translator using Whisper & mBART.
+title: Voxtral Universal S2S
 emoji: 🗣️
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
+sdk_version: 5.0.0
 app_file: app.py
 pinned: false
 license: mit
-short_description: 50-Language Speech Translator with Whisper & mBART
+short_description: A 50-language Speech-to-Speech translation pipeline.
 ---
 
-# 🌍 50-Language Speech-to-Speech Translator using Whisper & mBART.
+# 🌍 Voxtral: Universal Speech-to-Speech Translator
 
-Multimodal AI demo that translates spoken language into another language's voice in real-time. It chains together three distinct AI technologies to achieve a seamless "Universal Translator" experience.
+Voxtral is a multimodal AI demo that translates spoken language into another language's voice in real-time. It chains together three distinct AI technologies to achieve a seamless "Universal Translator" experience.
 
 ## 🚀 How it Works
 The application follows a linear pipeline to process your voice:
@@ -27,7 +28,6 @@ The application follows a linear pipeline to process your voice:
 - **Frontend:** [Gradio](https://gradio.app/)
 - **Inference:** [Hugging Face Inference API](https://huggingface.co/docs/api-inference/index)
 - **Audio Engine:** gTTS (Google Text-to-Speech)
-
 
 ## 📖 Supported Languages
 This demo supports 50 languages, including Arabic, Chinese, English, French, German, Hindi, Japanese, Spanish, Vietnamese, and many more.
