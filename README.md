@@ -9,16 +9,17 @@ pinned: false
 license: mit
 short_description: 50-Language Speech Translator with Whisper & mBART.
 models:
-  - openai/whisper-large-v3-turbo
-  - facebook/mbart-large-50-many-to-many-mmt
-  - engine gTTS (Google Text-to-Speech)
+- openai/whisper-large-v3-turbo
+- facebook/mbart-large-50-many-to-many-mmt
+- engine gTTS (Google Text-to-Speech)
 tags:
-  - speech-to-speech
-  - translation
-  - automatic-speech-recognition
-  - audio-to-audio
-  - whisper
-  - mbart
+- speech-to-speech
+- translation
+- automatic-speech-recognition
+- audio-to-audio
+- whisper
+- mbart
+sdk_version: 6.5.1
 ---
 
 # 🌍 50-Language Speech-to-Speech Translator
