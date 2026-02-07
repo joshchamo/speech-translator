@@ -4,22 +4,22 @@ emoji: 🗣️
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
-sdk_version: 5.0.0
+sdk_version: 6.5.1
 app_file: app.py
 pinned: false
 license: mit
 short_description: 50-Language Speech Translator with Whisper & mBART
 models:
-  - openai/whisper-large-v3-turbo
-  - facebook/mbart-large-50-many-to-many-mmt
+- openai/whisper-large-v3-turbo
+- facebook/mbart-large-50-many-to-many-mmt
 tags:
-  - speech-to-speech
-  - translation
-  - automatic-speech-recognition
-  - audio-to-audio
-  - multilingual
-  - whisper
-  - mbart
+- speech-to-speech
+- translation
+- automatic-speech-recognition
+- audio-to-audio
+- multilingual
+- whisper
+- mbart
 ---
 
 # 🌍 Voxtral: Universal Speech-to-Speech Translator
