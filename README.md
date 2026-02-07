@@ -1,53 +1,85 @@
 ---
-title: Voxtral Multimodal Translator
+title: 50-Language Speech-to-Speech Translator using Whisper & mBART
 emoji: 🗣️
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
-sdk_version: 6.5.1
 app_file: app.py
 pinned: false
 license: mit
-short_description: 50-Language Speech Translator with Whisper & mBART
+short_description: 50-Language Speech Translator with Whisper & mBART.
 models:
-- openai/whisper-large-v3-turbo
-- facebook/mbart-large-50-many-to-many-mmt
+  - openai/whisper-large-v3-turbo
+  - facebook/mbart-large-50-many-to-many-mmt
+  - engine gTTS (Google Text-to-Speech)
 tags:
-- speech-to-speech
-- translation
-- automatic-speech-recognition
-- audio-to-audio
-- multilingual
-- whisper
-- mbart
+  - speech-to-speech
+  - translation
+  - automatic-speech-recognition
+  - audio-to-audio
+  - whisper
+  - mbart
 ---
 
-# 🌍 Voxtral: Universal Speech-to-Speech Translator
+# 🌍 50-Language Speech-to-Speech Translator
 
-Voxtral is a high-performance, multimodal AI demonstration that transcribes, translates, and voices speech in real-time. By chaining three state-of-the-art technologies, it creates a seamless "Universal Translator" experience across 50 languages.
+This Hugging Face Space is a **multimodal demo** that performs end-to-end speech translation by chaining together speech recognition, machine translation, and text-to-speech synthesis.
 
-## 🚀 The AI Pipeline
-To ensure high accuracy and low latency, Voxtral utilizes a modular inference chain:
+It allows users to speak in one language and hear the translated speech in another, supporting 50 languages.
 
-1. **Transcription (ASR):** [OpenAI Whisper Large v3 Turbo](https://huggingface.co/openai/whisper-large-v3-turbo) 
-   - Converts raw microphone input into high-fidelity text.
-2. **Translation (NMT):** [Facebook mBART-50 Many-to-Many](https://huggingface.co/facebook/mbart-large-50-many-to-many-mmt) 
-   - Translates the transcription into the target language while preserving context across 50+ language pairs.
-3. **Speech Synthesis (TTS):** Powered by `gTTS` 
-   - Generates a natural-sounding voice output in the target language for immediate playback.
+---
 
-## 📖 Key Features
-- **50 Languages Supported:** From Arabic and Chinese to Vietnamese and Xhosa.
-- **Multimodal Workflow:** Processes audio input and provides both text and audio output.
-- **Serverless Inference:** Powered by Hugging Face's hosted inference API for rapid processing.
+## 🚀 How It Works
 
-## 🛠️ How to Use
-1. Select your **Input Language** and **Target Language**.
-2. Click the **Microphone** icon and speak a sentence.
-3. Once you stop recording, the system will automatically transcribe, translate, and play the spoken result.
-4. Use the **Debug Logs** accordion if you want to see the system's status and API response times.
+The application follows a linear processing pipeline:
 
-## 🧪 Technical Details
-This Space demonstrates the power of **Inference Chaining**. Instead of relying on a single massive model, 
-it uses specialized models for each task, allowing for a more flexible and robust translation experience. 
-The backend is built with Python and Gradio, communicating via the Hugging Face Inference API.
+1. **Automatic Speech Recognition (ASR)**  
+   Spoken audio is transcribed into text using **Whisper (Large v3 Turbo)**.
+
+2. **Neural Machine Translation (NMT)**  
+   The transcribed text is translated into a selected target language using **mBART-50**, which supports 50 languages.
+
+3. **Text-to-Speech (TTS)**  
+   The translated text is converted back into audio using **gTTS (Google Text-to-Speech)**.
+
+The result is a seamless speech-to-speech translation experience.
+
+---
+
+## 🛠️ Tech Stack
+
+- **UI:** Gradio  
+- **Speech Recognition:** Whisper  
+- **Translation:** Facebook mBART-50  
+- **Text-to-Speech:** gTTS  
+- **Hosting:** Hugging Face Spaces  
+
+---
+
+## 🌐 Supported Languages
+
+The demo supports 50 languages, including but not limited to:
+
+Arabic, Chinese, English, French, German, Hindi, Japanese, Korean, Portuguese, Spanish, Vietnamese, and many more.
+
+---
+
+## ⚙️ Design Notes
+
+- Models were selected to balance **language coverage**, **latency**, and **availability** on Hugging Face Spaces.
+- Always-on or fast-loading models were preferred to avoid cold-start delays.
+- The demo focuses on clarity and reliability rather than pushing the largest possible models.
+
+---
+
+## 📌 Limitations
+
+- Long audio inputs may increase processing time.
+- Translation quality can vary for less common language pairs.
+- TTS voices depend on gTTS language support.
+
+---
+
+## 📄 License
+
+This project is released under the **MIT License**.
