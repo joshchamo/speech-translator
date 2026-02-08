@@ -54,6 +54,19 @@ The application follows a linear processing pipeline:
 
 The result is a seamless speech-to-speech translation experience.
 
+```mermaid
+flowchart TD
+    Start([User Records Audio]) --> ASR[Automatic Speech Recognition<br/>openai/whisper-large-v3-turbo]
+    ASR --> |Transcribed Text| NMT[Neural Machine Translation<br/>facebook/mbart-large-50-many-to-many-mmt]
+    NMT --> |Translated Text<br/>Target Language| TTS[Text-to-Speech<br/>gTTS - Google Text-to-Speech]
+    TTS --> Output([Audio Output])
+    
+    style Start stroke:#2563eb,stroke-width:3px
+    style ASR stroke:#dc2626,stroke-width:3px
+    style NMT stroke:#7c3aed,stroke-width:3px
+    style TTS stroke:#059669,stroke-width:3px
+    style Output stroke:#2563eb,stroke-width:3px
+```
 ---
 
 ## 🛠️ Tech Stack
