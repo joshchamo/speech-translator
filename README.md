@@ -75,7 +75,7 @@ flowchart TD
 - **Speech Recognition:** Whisper  
 - **Translation:** Facebook mBART-50  
 - **Text-to-Speech:** gTTS  
-- **Hosting:** Hugging Face Spaces  
+- **Hosting:** [Hugging Face Spaces](https://huggingface.co/spaces/Jchamo/speech-to-speech-translation-50-languages) , [Vercel](https://v0-speech-translator.vercel.app/) 
 
 ---
 
